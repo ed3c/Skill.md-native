@@ -109,7 +109,7 @@ class ScoringTests(unittest.TestCase):
             self.assertEqual(len(digest), 64)
             self.assertTrue(path.is_file())
             payload = json.loads(path.read_text())
-            self.assertEqual(payload["policy"]["version"], "v0.3")
+            self.assertEqual(payload["policy"]["version"], "v0.4")
             self.assertEqual(payload["result"]["sample_count"], 3)
 
     def test_confidence_thresholds(self):
