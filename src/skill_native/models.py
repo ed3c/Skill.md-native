@@ -42,11 +42,22 @@ class RuntimeRef(BaseModel):
     image_digest: str
 
 
+class NetworkRule(BaseModel):
+    host: str
+    port: int = 443
+    protocol: str = "rest"
+    access: str = "read-only"
+    binaries: list[str] = Field(default_factory=lambda: ["/usr/bin/curl"])
+    path: str | None = None
+
+
 class SandboxPolicy(BaseModel):
     network: str = "deny-by-default"
     allowed_hosts: list[str] = Field(default_factory=list)
+    network_rules: list[NetworkRule] = Field(default_factory=list)
     filesystem: str = "ephemeral"
     secrets: str = "brokered"
+    landlock_compatibility: str = "hard_requirement"
 
 
 class Scenario(BaseModel):
@@ -99,3 +110,6 @@ class EvidenceBundle(BaseModel):
     inference: list[InferenceReceipt] = Field(default_factory=list)
     assertions: dict[str, bool] = Field(default_factory=dict)
     findings: list[dict[str, Any]] = Field(default_factory=list)
+    runtime_metadata: dict[str, Any] = Field(default_factory=dict)
+    policy: dict[str, Any] = Field(default_factory=dict)
+    ocsf_events: list[dict[str, Any]] = Field(default_factory=list)
