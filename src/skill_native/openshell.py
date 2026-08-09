@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 import yaml
 
@@ -96,11 +96,15 @@ class OpenShellPolicyCompiler:
 
 
 class OpenShellController:
-    """Fail-closed wrapper around the OpenShell CLI with evidence capture."""
+    """Fail-closed wrapper around the OpenShell CLI with evidence capture.
 
-    _MANIFEST_CMD = (
-        "find /sandbox -xdev -type f -exec sha256sum -- {} + 2>/dev/null | sort || true"
-    )
+    Provider credentials stay in the OpenShell gateway. Attached provider names
+    are passed to `sandbox create`; the sandbox receives only OpenShell placeholder
+    values which are resolved by the proxy on allowed outbound requests.
+    """
+
+    _MANIFEST_CMD = "find /sandbox -xdev -type f -exec sha256sum -- {} + 2>/dev/null | sort || true"
+    _PLACEHOLDER_MARKERS = ("openshell:resolve:env:", "OPENSHELL-RESOLVE-ENV-")
 
     def __init__(self, runner: CommandRunner | None = None, binary: str = "openshell") -> None:
         self.runner = runner or SubprocessRunner()
@@ -119,15 +123,16 @@ class OpenShellController:
         status = self._json_command([self.binary, "status", "--output", "json"])
         gateway_info = self._json_command([self.binary, "gateway", "info", "-o", "json"])
 
-        create = self.runner.run(
-            [self.binary, "sandbox", "create", "--name", name, "--policy", str(policy_path)],
-            timeout=spec.limits.timeout_seconds,
-        )
+        create_argv = [self.binary, "sandbox", "create", "--name", name, "--policy", str(policy_path)]
+        for provider in spec.policy.provider_names:
+            create_argv.extend(["--provider", provider])
+        create = self.runner.run(create_argv, timeout=spec.limits.timeout_seconds)
         if create.returncode != 0:
             tempdir.cleanup()
             raise OpenShellError(f"sandbox create failed: {create.stderr.strip()}")
 
         metadata = self._json_command([self.binary, "sandbox", "get", name, "--output", "json"])
+        attestation = self._attest_runtime(spec, status=status, gateway_info=gateway_info, metadata=metadata)
         enable_ocsf = self.runner.run(
             [self.binary, "settings", "set", name, "--key", "ocsf_json_enabled", "--value", "true"],
             timeout=30,
@@ -137,6 +142,7 @@ class OpenShellController:
             tempdir.cleanup()
             raise OpenShellError(f"failed to enable OCSF JSON export: {enable_ocsf.stderr.strip()}")
 
+        credential_probe = self._credential_probe(name, spec.policy.secret_env_names)
         filesystem_before = self._filesystem_manifest(name)
         self._runs[name] = {
             "spec": spec,
@@ -146,6 +152,8 @@ class OpenShellController:
             "metadata": metadata,
             "status": status,
             "gateway_info": gateway_info,
+            "attestation": attestation,
+            "credential_probe": credential_probe,
             "filesystem_before": filesystem_before,
             "executions": {},
         }
@@ -167,13 +175,17 @@ class OpenShellController:
         sandbox_id = execution_id.split(":exec:", 1)[0]
         record = self._require_run(sandbox_id)
         result: CommandResult = record["executions"][execution_id]
+        spec: RunSpec = record["spec"]
 
         filesystem_after = self._filesystem_manifest(sandbox_id)
         filesystem_diff = self._diff_manifests(record["filesystem_before"], filesystem_after)
 
-        effective_policy = self.runner.run(
-            [self.binary, "sandbox", "get", sandbox_id, "--policy-only"], timeout=30
-        )
+        effective_policy = self.runner.run([self.binary, "policy", "get", sandbox_id, "--full"], timeout=30)
+        if effective_policy.returncode != 0 or not effective_policy.stdout.strip():
+            # Compatibility fallback for older alpha CLI revisions.
+            effective_policy = self.runner.run(
+                [self.binary, "sandbox", "get", sandbox_id, "--policy-only"], timeout=30
+            )
         if effective_policy.returncode != 0 or not effective_policy.stdout.strip():
             raise OpenShellError("effective policy evidence unavailable")
 
@@ -193,10 +205,10 @@ class OpenShellController:
         processes = [event for event in ocsf_events if event.get("class_uid") == 1007]
         network = [event for event in ocsf_events if event.get("class_uid") in {4001, 4002}]
         findings = [event for event in ocsf_events if event.get("class_uid") == 2004]
-        spec: RunSpec = record["spec"]
 
         return EvidenceBundle(
             run_id=run_id,
+            provenance_digest=spec.skill.provenance_digest,
             exit_code=result.returncode,
             stdout=result.stdout,
             stderr=result.stderr,
@@ -212,6 +224,7 @@ class OpenShellController:
                 "ocsf_captured": True,
                 "filesystem_manifest_captured": True,
                 "runtime_attested": True,
+                "credential_non_exposure": record["credential_probe"]["passed"],
             },
             runtime_metadata={
                 "backend": "openshell",
@@ -219,6 +232,8 @@ class OpenShellController:
                 "sandbox": record["metadata"],
                 "gateway_status": record["status"],
                 "gateway_info": record["gateway_info"],
+                "attestation": record["attestation"],
+                "credential_probe": record["credential_probe"],
                 "declared_runtime_version": spec.runtime.version,
                 "declared_image_digest": spec.runtime.image_digest,
                 "policy_sha256": record["policy_hash"],
@@ -237,6 +252,80 @@ class OpenShellController:
         finally:
             if record:
                 record["tempdir"].cleanup()
+
+    def _credential_probe(self, sandbox_id: str, env_names: list[str]) -> dict[str, Any]:
+        if not env_names:
+            return {"passed": True, "checked": [], "reason": "no secret env names declared"}
+        script = "\n".join(
+            [
+                "import json, os",
+                f"names={env_names!r}",
+                "print(json.dumps({n: os.environ.get(n) for n in names}, sort_keys=True))",
+            ]
+        )
+        result = self.runner.run(
+            [self.binary, "sandbox", "exec", "-n", sandbox_id, "--no-tty", "--", "python3", "-c", script],
+            timeout=30,
+        )
+        if result.returncode != 0:
+            raise OpenShellError("credential isolation probe failed to execute")
+        try:
+            values = json.loads(result.stdout.strip() or "{}")
+        except json.JSONDecodeError as exc:
+            raise OpenShellError("credential isolation probe returned invalid JSON") from exc
+        exposed: list[str] = []
+        placeholders: list[str] = []
+        missing: list[str] = []
+        for name in env_names:
+            value = values.get(name)
+            if value is None:
+                missing.append(name)
+            elif any(marker in str(value) for marker in self._PLACEHOLDER_MARKERS):
+                placeholders.append(name)
+            else:
+                exposed.append(name)
+        if exposed:
+            raise OpenShellError(f"raw provider credential visible inside sandbox: {', '.join(exposed)}")
+        return {"passed": True, "checked": env_names, "placeholders": placeholders, "missing": missing}
+
+    def _attest_runtime(self, spec: RunSpec, *, status: dict, gateway_info: dict, metadata: dict) -> dict[str, Any]:
+        observed_version = self._recursive_value([gateway_info, status], ("version", "gateway_version", "openshell_version"))
+        observed_digest = self._recursive_value([metadata], ("image_digest", "digest", "imageDigest"))
+        declared_version = spec.runtime.version.strip()
+        declared_digest = spec.runtime.image_digest.strip()
+        if declared_version and declared_version not in {"latest", "unknown", "*"} and observed_version:
+            if declared_version != str(observed_version):
+                raise OpenShellError(
+                    f"runtime version mismatch: declared={declared_version} observed={observed_version}"
+                )
+        if declared_digest and declared_digest not in {"latest", "unknown", "*"} and observed_digest:
+            if declared_digest != str(observed_digest):
+                raise OpenShellError(
+                    f"sandbox image digest mismatch: declared={declared_digest} observed={observed_digest}"
+                )
+        return {
+            "declared_version": declared_version,
+            "observed_version": observed_version,
+            "declared_image_digest": declared_digest,
+            "observed_image_digest": observed_digest,
+            "version_match": observed_version is None or declared_version in {"latest", "unknown", "*", str(observed_version)},
+            "image_match": observed_digest is None or declared_digest in {"latest", "unknown", "*", str(observed_digest)},
+        }
+
+    @classmethod
+    def _recursive_value(cls, roots: list[Any], keys: tuple[str, ...]) -> Any | None:
+        wanted = {k.lower() for k in keys}
+        stack = list(roots)
+        while stack:
+            value = stack.pop()
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    if str(key).lower() in wanted and child not in (None, ""):
+                        return child
+                    stack.append(child)
+            elif isinstance(value, list):
+                stack.extend(value)
+        return None
 
     def _filesystem_manifest(self, sandbox_id: str) -> dict[str, dict[str, str]]:
         result = self.runner.run(
