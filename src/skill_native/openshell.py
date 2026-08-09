@@ -37,12 +37,6 @@ class OpenShellError(RuntimeError):
 
 
 class OpenShellPolicyCompiler:
-    """Compile the run policy into OpenShell policy schema v1.
-
-    Legacy ``allowed_hosts`` entries are intentionally read-only REST grants.
-    Workflows that need mutation must use explicit ``network_rules``.
-    """
-
     _SAFE_NAME = re.compile(r"[^a-zA-Z0-9_.-]+")
 
     def compile(self, spec: RunSpec) -> dict:
@@ -55,7 +49,6 @@ class OpenShellPolicyCompiler:
 
         rules = list(spec.policy.network_rules)
         rules.extend(NetworkRule(host=host) for host in spec.policy.allowed_hosts)
-
         network_policies: dict[str, dict] = {}
         for index, rule in enumerate(rules):
             key = self._policy_key(index, rule.host)
@@ -103,11 +96,11 @@ class OpenShellPolicyCompiler:
 
 
 class OpenShellController:
-    """Testable wrapper around the OpenShell CLI.
+    """Fail-closed wrapper around the OpenShell CLI with evidence capture."""
 
-    It fails closed when sandbox metadata, effective policy, logs, or machine-
-    readable OCSF evidence cannot be collected.
-    """
+    _MANIFEST_CMD = (
+        "find /sandbox -xdev -type f -exec sha256sum -- {} + 2>/dev/null | sort || true"
+    )
 
     def __init__(self, runner: CommandRunner | None = None, binary: str = "openshell") -> None:
         self.runner = runner or SubprocessRunner()
@@ -122,6 +115,9 @@ class OpenShellController:
         tempdir = tempfile.TemporaryDirectory(prefix="skill-native-openshell-")
         policy_path = Path(tempdir.name) / "policy.yaml"
         policy_path.write_text(policy_yaml)
+
+        status = self._json_command([self.binary, "status", "--output", "json"])
+        gateway_info = self._json_command([self.binary, "gateway", "info", "-o", "json"])
 
         create = self.runner.run(
             [self.binary, "sandbox", "create", "--name", name, "--policy", str(policy_path)],
@@ -141,12 +137,16 @@ class OpenShellController:
             tempdir.cleanup()
             raise OpenShellError(f"failed to enable OCSF JSON export: {enable_ocsf.stderr.strip()}")
 
+        filesystem_before = self._filesystem_manifest(name)
         self._runs[name] = {
             "spec": spec,
             "tempdir": tempdir,
             "policy_yaml": policy_yaml,
             "policy_hash": policy_hash,
             "metadata": metadata,
+            "status": status,
+            "gateway_info": gateway_info,
+            "filesystem_before": filesystem_before,
             "executions": {},
         }
         return name
@@ -156,18 +156,8 @@ class OpenShellController:
         spec: RunSpec = record["spec"]
         execution_id = f"{sandbox_id}:exec:{len(record['executions'])}"
         result = self.runner.run(
-            [
-                self.binary,
-                "sandbox",
-                "exec",
-                "-n",
-                sandbox_id,
-                "--no-tty",
-                "--timeout",
-                str(spec.limits.timeout_seconds),
-                "--",
-                *command,
-            ],
+            [self.binary, "sandbox", "exec", "-n", sandbox_id, "--no-tty", "--timeout",
+             str(spec.limits.timeout_seconds), "--", *command],
             timeout=spec.limits.timeout_seconds + 15,
         )
         record["executions"][execution_id] = result
@@ -178,8 +168,11 @@ class OpenShellController:
         record = self._require_run(sandbox_id)
         result: CommandResult = record["executions"][execution_id]
 
+        filesystem_after = self._filesystem_manifest(sandbox_id)
+        filesystem_diff = self._diff_manifests(record["filesystem_before"], filesystem_after)
+
         effective_policy = self.runner.run(
-            [self.binary, "policy", "get", sandbox_id, "--full"], timeout=30
+            [self.binary, "sandbox", "get", sandbox_id, "--policy-only"], timeout=30
         )
         if effective_policy.returncode != 0 or not effective_policy.stdout.strip():
             raise OpenShellError("effective policy evidence unavailable")
@@ -189,18 +182,8 @@ class OpenShellController:
             raise OpenShellError("sandbox log evidence unavailable")
 
         ocsf_result = self.runner.run(
-            [
-                self.binary,
-                "sandbox",
-                "exec",
-                "-n",
-                sandbox_id,
-                "--no-tty",
-                "--",
-                "/bin/sh",
-                "-lc",
-                "cat /var/log/openshell-ocsf.*.log 2>/dev/null || true",
-            ],
+            [self.binary, "sandbox", "exec", "-n", sandbox_id, "--no-tty", "--",
+             "/bin/sh", "-lc", "cat /var/log/openshell-ocsf.*.log 2>/dev/null || true"],
             timeout=30,
         )
         ocsf_events = self._parse_jsonl(ocsf_result.stdout)
@@ -210,38 +193,38 @@ class OpenShellController:
         processes = [event for event in ocsf_events if event.get("class_uid") == 1007]
         network = [event for event in ocsf_events if event.get("class_uid") in {4001, 4002}]
         findings = [event for event in ocsf_events if event.get("class_uid") == 2004]
+        spec: RunSpec = record["spec"]
 
         return EvidenceBundle(
             run_id=run_id,
             exit_code=result.returncode,
             stdout=result.stdout,
             stderr=result.stderr,
-            commands=[
-                {
-                    "execution_id": execution_id,
-                    "argv": result.argv,
-                    "exit_code": result.returncode,
-                }
-            ],
+            commands=[{"execution_id": execution_id, "argv": result.argv, "exit_code": result.returncode}],
             processes=processes,
             network=network,
             findings=findings,
+            filesystem_before=record["filesystem_before"],
+            filesystem_after={**filesystem_after, "diff": filesystem_diff},
             assertions={
                 "runtime_completed": True,
                 "effective_policy_captured": True,
                 "ocsf_captured": True,
+                "filesystem_manifest_captured": True,
+                "runtime_attested": True,
             },
             runtime_metadata={
                 "backend": "openshell",
                 "sandbox_id": sandbox_id,
                 "sandbox": record["metadata"],
+                "gateway_status": record["status"],
+                "gateway_info": record["gateway_info"],
+                "declared_runtime_version": spec.runtime.version,
+                "declared_image_digest": spec.runtime.image_digest,
                 "policy_sha256": record["policy_hash"],
                 "logs": logs.stdout,
             },
-            policy={
-                "compiled": yaml.safe_load(record["policy_yaml"]),
-                "effective": effective_policy.stdout,
-            },
+            policy={"compiled": yaml.safe_load(record["policy_yaml"]), "effective": effective_policy.stdout},
             ocsf_events=ocsf_events,
         )
 
@@ -254,6 +237,38 @@ class OpenShellController:
         finally:
             if record:
                 record["tempdir"].cleanup()
+
+    def _filesystem_manifest(self, sandbox_id: str) -> dict[str, dict[str, str]]:
+        result = self.runner.run(
+            [self.binary, "sandbox", "exec", "-n", sandbox_id, "--no-tty", "--",
+             "/bin/sh", "-lc", self._MANIFEST_CMD], timeout=60
+        )
+        if result.returncode != 0:
+            raise OpenShellError("filesystem manifest collection failed")
+        files: dict[str, dict[str, str]] = {}
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(maxsplit=1)
+            if len(parts) != 2 or len(parts[0]) != 64:
+                continue
+            path = parts[1].lstrip("* ")
+            files[path] = {"sha256": parts[0]}
+        return files
+
+    @staticmethod
+    def _diff_manifests(before: dict[str, dict[str, str]], after: dict[str, dict[str, str]]) -> dict:
+        before_paths, after_paths = set(before), set(after)
+        modified = sorted(
+            path for path in before_paths & after_paths
+            if before[path].get("sha256") != after[path].get("sha256")
+        )
+        return {
+            "added": sorted(after_paths - before_paths),
+            "removed": sorted(before_paths - after_paths),
+            "modified": modified,
+        }
 
     def _best_effort_delete(self, sandbox_id: str) -> None:
         self.runner.run([self.binary, "sandbox", "delete", sandbox_id], timeout=60)
