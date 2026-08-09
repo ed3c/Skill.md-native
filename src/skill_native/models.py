@@ -23,6 +23,7 @@ class SkillRef(BaseModel):
     source_url: str
     commit_or_digest: str
     entrypoint: str = "SKILL.md"
+    provenance_digest: str | None = None
 
 
 class AgentRef(BaseModel):
@@ -95,10 +96,12 @@ class InferenceReceipt(BaseModel):
     quota_class: QuotaClass
     rate_limit_headers: dict[str, str] = Field(default_factory=dict)
     error: str | None = None
+    run_id: str | None = None
 
 
 class EvidenceBundle(BaseModel):
     run_id: str
+    provenance_digest: str | None = None
     exit_code: int | None = None
     stdout: str = ""
     stderr: str = ""
