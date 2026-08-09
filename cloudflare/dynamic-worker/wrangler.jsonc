@@ -1,0 +1,7 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "skill-native-dynamic-runtime",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-09",
+  "worker_loaders": [{"binding": "LOADER"}]
+}
