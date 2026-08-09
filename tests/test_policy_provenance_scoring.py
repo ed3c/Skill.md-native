@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,7 +7,7 @@ from skill_native.models import EvidenceBundle, InferenceReceipt, QuotaClass
 from skill_native.policy import ProviderPolicy, ReceiptLedger
 from skill_native.provenance import SourceAttestation, build_provenance, merge_equivalent
 from skill_native.providers import ProviderConfig, ProviderKind
-from skill_native.scoring import score_evidence
+from skill_native.scoring import ScorePolicy, persist_score_artifact, score_evidence
 
 
 class PolicyTests(unittest.TestCase):
@@ -96,6 +97,20 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(result.raw_metrics["input_tokens"], 30)
         self.assertEqual(result.raw_metrics["output_tokens"], 15)
         self.assertEqual(result.raw_metrics["recovery_success"], 1.0)
+        self.assertLess(result.raw_metrics["task_success_ci95_low"], 1.0)
+        self.assertEqual(result.raw_metrics["task_success_ci95_high"], 1.0)
+
+    def test_score_artifact_is_digest_addressed(self):
+        evidence = EvidenceBundle(run_id="r", exit_code=0, assertions={"ok": True})
+        policy = ScorePolicy()
+        result = score_evidence([evidence, evidence, evidence], policy)
+        with tempfile.TemporaryDirectory() as td:
+            digest, path = persist_score_artifact(result, policy, td)
+            self.assertEqual(len(digest), 64)
+            self.assertTrue(path.is_file())
+            payload = json.loads(path.read_text())
+            self.assertEqual(payload["policy"]["version"], "v0.3")
+            self.assertEqual(payload["result"]["sample_count"], 3)
 
     def test_confidence_thresholds(self):
         evidence = EvidenceBundle(run_id="r", exit_code=0, assertions={"ok": True})
