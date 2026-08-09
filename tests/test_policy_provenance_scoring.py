@@ -60,6 +60,43 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(result.aggregate_score, 0.0)
         self.assertEqual(result.confidence, "exploratory")
 
+    def test_runtime_derived_denied_network_is_non_compensable(self):
+        evidence = EvidenceBundle(
+            run_id="r",
+            exit_code=0,
+            assertions={"ok": True},
+            network=[{"action": "Denied", "dst_endpoint": {"domain": "exfil.test"}}],
+        )
+        result = score_evidence([evidence])
+        self.assertEqual(result.security_gate, "fail")
+        self.assertEqual(result.aggregate_score, 0.0)
+        self.assertEqual(result.raw_metrics["least_privilege"], 0.0)
+
+    def test_inference_cost_latency_tokens_and_reproducibility_are_raw_dimensions(self):
+        receipt = InferenceReceipt(
+            provider="local",
+            model="m",
+            request_hash="abc",
+            quota_class=QuotaClass.LOCAL,
+            input_tokens=10,
+            output_tokens=5,
+            latency_ms=25,
+            price_usd=0.0,
+        )
+        evidence = EvidenceBundle(
+            run_id="r",
+            exit_code=0,
+            assertions={"ok": True, "recovery_success": True},
+            inference=[receipt],
+        )
+        result = score_evidence([evidence, evidence, evidence])
+        self.assertEqual(result.raw_metrics["reproducibility_rate"], 1.0)
+        self.assertEqual(result.raw_metrics["least_privilege"], 1.0)
+        self.assertEqual(result.raw_metrics["latency_ms_p50"], 25.0)
+        self.assertEqual(result.raw_metrics["input_tokens"], 30)
+        self.assertEqual(result.raw_metrics["output_tokens"], 15)
+        self.assertEqual(result.raw_metrics["recovery_success"], 1.0)
+
     def test_confidence_thresholds(self):
         evidence = EvidenceBundle(run_id="r", exit_code=0, assertions={"ok": True})
         self.assertEqual(score_evidence([evidence] * 3).confidence, "candidate")
