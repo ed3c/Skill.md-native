@@ -11,12 +11,7 @@ from .providers import ProviderError, ProviderRouter
 
 
 class InferenceGateway:
-    """OpenAI-compatible broker for sandboxed Agent traffic.
-
-    The gateway owns provider credentials outside the Skill workspace. Routing
-    policy and budget enforcement happen before provider selection. Every
-    upstream attempt is persisted to the receipt ledger when one is configured.
-    """
+    """OpenAI-compatible broker for sandboxed Agent traffic."""
 
     def __init__(
         self,
@@ -40,11 +35,17 @@ class InferenceGateway:
         }
         return ProviderRouter(providers, clients=clients)
 
-    def _persist_new_receipts(self, router: ProviderRouter, start_index: int) -> None:
+    def _persist_new_receipts(
+        self,
+        router: ProviderRouter,
+        start_index: int,
+        *,
+        run_id: str | None,
+    ) -> None:
         if self.ledger is None:
             return
         for receipt in router.attempt_receipts[start_index:]:
-            self.ledger.append(receipt)
+            self.ledger.append(receipt, run_id=run_id)
 
     def chat_completions(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any], dict[str, str]]:
         messages = payload.get("messages")
@@ -58,6 +59,9 @@ class InferenceGateway:
                 return 429, {"error": {"message": str(exc), "type": "skill_native_budget_exhausted"}}, {}
 
         provider = payload.get("skill_native_provider")
+        run_id = payload.get("skill_native_run_id")
+        if run_id is not None and not isinstance(run_id, str):
+            return 400, {"error": {"message": "skill_native_run_id must be a string"}}, {}
         max_tokens = payload.get("max_tokens")
         temperature = payload.get("temperature", 0.0)
         started = time.time()
@@ -75,31 +79,33 @@ class InferenceGateway:
                 temperature=temperature,
             )
         except ProviderError as exc:
-            self._persist_new_receipts(active_router, receipt_start)
+            self._persist_new_receipts(active_router, receipt_start, run_id=run_id)
             code = 429 if exc.receipt.error == "http_429" else 502
+            receipt = exc.receipt.model_copy(update={"run_id": run_id})
             return (
                 code,
                 {
                     "error": {
                         "message": str(exc),
                         "type": "skill_native_upstream_error",
-                        "provider": exc.receipt.provider,
+                        "provider": receipt.provider,
                     },
-                    "skill_native_receipt": exc.receipt.model_dump(mode="json"),
+                    "skill_native_receipt": receipt.model_dump(mode="json"),
                 },
-                {"x-skill-native-provider": exc.receipt.provider},
+                {"x-skill-native-provider": receipt.provider},
             )
         except RuntimeError as exc:
-            self._persist_new_receipts(active_router, receipt_start)
+            self._persist_new_receipts(active_router, receipt_start, run_id=run_id)
             return 503, {"error": {"message": str(exc), "type": "skill_native_policy_error"}}, {}
 
-        self._persist_new_receipts(active_router, receipt_start)
+        self._persist_new_receipts(active_router, receipt_start, run_id=run_id)
+        receipt = result.receipt.model_copy(update={"run_id": run_id})
         created = int(started)
         body = {
             "id": f"chatcmpl-skill-native-{uuid.uuid4().hex}",
             "object": "chat.completion",
             "created": created,
-            "model": result.receipt.model,
+            "model": receipt.model,
             "choices": [
                 {
                     "index": 0,
@@ -108,13 +114,13 @@ class InferenceGateway:
                 }
             ],
             "usage": {
-                "prompt_tokens": result.receipt.input_tokens,
-                "completion_tokens": result.receipt.output_tokens,
-                "total_tokens": result.receipt.input_tokens + result.receipt.output_tokens,
+                "prompt_tokens": receipt.input_tokens,
+                "completion_tokens": receipt.output_tokens,
+                "total_tokens": receipt.input_tokens + receipt.output_tokens,
             },
-            "skill_native_receipt": result.receipt.model_dump(mode="json"),
+            "skill_native_receipt": receipt.model_dump(mode="json"),
         }
-        return 200, body, {"x-skill-native-provider": result.receipt.provider}
+        return 200, body, {"x-skill-native-provider": receipt.provider}
 
 
 def make_handler(gateway: InferenceGateway):
