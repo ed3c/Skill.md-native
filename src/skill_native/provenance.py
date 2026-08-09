@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+import json
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -74,6 +75,28 @@ def build_provenance(root: str | Path, *, entrypoint: str, attestation: SourceAt
         dependency_files=discover_dependencies(root),
         attestations=(attestation,),
     )
+
+
+def provenance_payload(record: ProvenanceRecord) -> dict:
+    payload = asdict(record)
+    payload["dependency_files"] = list(record.dependency_files)
+    payload["attestations"] = [asdict(item) for item in record.attestations]
+    return payload
+
+
+def provenance_digest(record: ProvenanceRecord) -> str:
+    data = json.dumps(provenance_payload(record), sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(data).hexdigest()
+
+
+def persist_provenance(record: ProvenanceRecord, directory: str | Path) -> Path:
+    digest = provenance_digest(record)
+    root = Path(directory)
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f"{digest}.json"
+    if not path.exists():
+        path.write_text(json.dumps(provenance_payload(record), sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    return path
 
 
 def merge_equivalent(records: list[ProvenanceRecord]) -> list[ProvenanceRecord]:
