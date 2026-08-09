@@ -10,7 +10,13 @@ from urllib.parse import urlparse
 
 import httpx
 
-from .provenance import ProvenanceRecord, SourceAttestation, build_provenance
+from .provenance import (
+    ProvenanceRecord,
+    SourceAttestation,
+    build_provenance,
+    persist_provenance,
+    provenance_digest,
+)
 
 
 @dataclass(frozen=True)
@@ -38,6 +44,8 @@ class IngestedSkill:
     root: Path
     commit_sha: str
     provenance: ProvenanceRecord
+    provenance_digest: str
+    provenance_path: Path | None = None
 
 
 class GitHubIngestor:
@@ -47,7 +55,13 @@ class GitHubIngestor:
         self.client = client or httpx.Client(timeout=60.0, follow_redirects=True)
         self.token_env = token_env
 
-    def ingest(self, source: GitHubSkillSource, destination: str | Path | None = None) -> IngestedSkill:
+    def ingest(
+        self,
+        source: GitHubSkillSource,
+        destination: str | Path | None = None,
+        *,
+        provenance_dir: str | Path | None = None,
+    ) -> IngestedSkill:
         headers = {"accept": "application/vnd.github+json", "x-github-api-version": "2022-11-28"}
         token = os.getenv(self.token_env)
         if token:
@@ -80,7 +94,15 @@ class GitHubIngestor:
             publisher=source.owner,
         )
         provenance = build_provenance(root, entrypoint=source.entrypoint, attestation=attestation)
-        return IngestedSkill(root=root, commit_sha=commit_sha, provenance=provenance)
+        digest = provenance_digest(provenance)
+        provenance_path = persist_provenance(provenance, provenance_dir) if provenance_dir else None
+        return IngestedSkill(
+            root=root,
+            commit_sha=commit_sha,
+            provenance=provenance,
+            provenance_digest=digest,
+            provenance_path=provenance_path,
+        )
 
     @staticmethod
     def _extract_skill_tree(archive: bytes, destination: Path, skill_path: str) -> None:
