@@ -1,86 +1,115 @@
 # Skill.md-native
 
-Runtime-verified evidence, evaluation, security, compatibility, and outcome ranking for Agent Skills across registries.
+Runtime-verified evidence, security, compatibility, and outcome ranking for Agent Skills across registries.
 
 ## Mission
 
-This repository treats every third-party `SKILL.md` package as an untrusted executable supply-chain artifact. It ingests skills from multiple registries, executes them in isolated runtimes, captures evidence, evaluates behavior, and ranks outcomes across agent/runtime/model combinations.
-
-## Core pipeline
+Every third-party `SKILL.md` package is treated as an untrusted executable supply-chain artifact. The project pins its origin, executes it through isolated runtimes, captures content-addressed evidence, evaluates security behavior, and ranks results without silently mixing Agent, Runtime, or Model confounders.
 
 ```text
-Registry Sources
-  -> Immutable ingestion + provenance
-  -> Static inspection
-  -> Runtime sandbox execution
-  -> Evidence capture
-  -> Security evaluation
-  -> Compatibility matrix
-  -> Outcome scoring
-  -> Ranked evidence ledger
+Registry
+  -> immutable provenance + SBOM
+  -> RunSpec
+  -> OpenShell | Cloudflare Sandbox | Dynamic Worker | Fake
+  -> governed inference broker
+  -> EvidenceBundle + evidence IDs
+  -> security gate
+  -> Skill x Agent x Runtime x Model matrix
+  -> ScorePolicy
+  -> digest-addressed report / score artifacts
 ```
 
-## Immutable GitHub ingestion
+## Immutable ingestion
 
-Resolve a mutable GitHub ref to an immutable commit, materialize only the requested Skill subtree, and persist a digest-addressed provenance record:
+### GitHub
 
 ```bash
-skill-native ingest-github https://github.com/OWNER/REPO \
+skill-native ingest-github https://github.com/vercel-labs/agent-skills \
   --ref main \
-  --skill-path path/to/skill \
-  --output .skill-native/artifacts/demo \
+  --skill-path skills/react-best-practices \
+  --output .skill-native/artifacts/react-best-practices \
   --provenance-dir .skill-native/provenance
 ```
 
-The provenance record contains the resolved commit SHA, deterministic content SHA-256, source/publisher attestation, license evidence, dependency manifests, and a provenance digest. `RunSpec.skill.provenance_digest` and `EvidenceBundle.provenance_digest` are reserved for linking runtime evidence to that immutable record.
+Mutable branch/tag input is resolved to a commit SHA before evaluation. The resulting provenance records content SHA-256, publisher/source attestations, license evidence, dependency manifests, and a deterministic provenance digest. `run_spec_from_provenance()` injects that digest into the generated `RunSpec`; every runtime carries it forward to `EvidenceBundle`.
 
-## Governed inference gateway
+### skills.sh
 
-The gateway supports Groq, Gemini, Cloudflare Workers AI, and local OpenAI-compatible endpoints while keeping provider credentials outside the Skill workspace. It can enforce a strict local-only policy and independent operator budgets:
+`SkillsShAdapter` uses the documented `skills.sh/api/v1` API and requires an operator-owned `VERCEL_OIDC_TOKEN`. It supports search, detail, audit metadata, materialization, and immutable provenance. No UI scraping is used.
+
+### OpenAI Plugin metadata
+
+OpenAI currently documents the Plugin Directory product but not a public directory-catalog API. `JsonMetadataAdapter` therefore accepts only an operator-supplied, accessible first-party JSON manifest/export and pins its canonical digest; it does not scrape authenticated ChatGPT UI.
+
+## Supply-chain evidence
+
+`build_supply_chain_evidence()` records publisher consistency, explicit signature status, and a CycloneDX 1.6 SBOM digest derived from discovered dependency manifests. Missing signatures/licenses remain explicit evidence states rather than inferred trust.
+
+## Governed inference broker
+
+The OpenAI-compatible broker supports Groq, Gemini, Workers AI, and local endpoints. It provides local-only routing, provider pinning, operator request/token/cost ceilings, normalized rate-limit evidence, provider capability/privacy metadata, and an append-only receipt ledger.
 
 ```bash
 skill-native serve-gateway examples/providers.yaml \
   --local-only \
-  --receipt-ledger .skill-native/evidence/inference.jsonl \
+  --receipt-ledger .skill-native/inference.jsonl \
   --max-daily-requests 100 \
   --max-daily-tokens 100000
 ```
 
-A sandboxed Agent may include `skill_native_run_id` in its `/v1/chat/completions` request. The returned receipt and append-only ledger entry carry that run id, allowing inference evidence to be joined to the parent runtime run without revealing raw upstream credentials.
+Requests may include `skill_native_run_id`; runtime execution can then materialize matching ledger receipts directly into `EvidenceBundle.inference`. Provider credentials remain operator-owned. Credential harvesting, account rotation, quota bypass, or unauthorized key pooling are outside the project contract.
 
-No credential harvesting, account rotation, quota bypass, or unauthorized proxying is permitted by project policy.
+## Runtimes
 
-## Runtime strategy
+### NVIDIA OpenShell
 
-- **NVIDIA OpenShell**: primary hostile-code security/reference runtime. Deny-by-default networking, Landlock, OCSF evidence, filesystem diff, and gateway/runtime attestation.
-- **Cloudflare Sandbox / Dynamic Workers**: cloud runtime path with normalized evidence and explicit resource/cost accounting.
-- **NVIDIA Enroot**: compatibility/performance backend only; not treated as a primary hostile-code isolation boundary.
-- **Fake runtime**: deterministic contract and CI testing.
+OpenShell is the hostile-code reference runtime. The adapter provides deny-by-default network policy, hard Landlock, filesystem manifests, OCSF capture, effective-policy capture, gateway/runtime attestation, provider attachment, raw-credential non-exposure probing, and declared runtime/image mismatch rejection. The controller fails closed when mandatory evidence is absent.
 
-## OpenShell implementation
+Account-backed validation is exposed through `.github/workflows/integration.yml`. A real OpenShell run is never substituted with a mock claim.
 
-The OpenShell adapter currently:
+### Cloudflare Sandbox
 
-- compiles `RunSpec` into OpenShell policy schema v1;
-- enforces deny-by-default networking and hard Landlock by default;
-- requires explicit network rules for mutating access;
-- captures sandbox/gateway metadata, effective policy, logs, OCSF events, filesystem before/after manifests, stdout/stderr, exit status, and policy digest;
-- fails closed when mandatory evidence channels are unavailable.
+`cloudflare/worker/` is a deployable `@cloudflare/sandbox` Worker bridge. Public internet is disabled by default, allowed hosts are explicit, outbound handlers record egress decisions, and credentials can be injected in trusted Worker code rather than exposed to the container. The Python `CloudflareHttpClient` normalizes cold/warm state, filesystem changes, command results, egress evidence, and execution metadata into the common `EvidenceBundle`.
 
-Live denied-egress, L7 denial, and credential non-exposure fixtures remain open until a real OpenShell gateway is available.
+Cloudflare Sandbox requires an eligible Cloudflare account/plan. The integration workflow therefore requires operator-owned Cloudflare credentials rather than assuming a permanent free allocation.
 
-## Security benchmark
+### Dynamic Workers
 
-`security_benchmark.py` contains matched synthetic malicious/benign evidence fixtures and reports true positives, false positives, true negatives, false negatives, recall, and false-positive rate. These deterministic fixtures validate the evaluator itself; they do not substitute for live malicious Skill execution or MalSkillBench integration.
+`cloudflare/dynamic-worker/` uses the Worker Loader binding for lightweight Code Mode. Every `load()` execution creates an isolated Worker with `globalOutbound: null`, blocking `fetch()` and `connect()` unless the parent deliberately supplies a capability.
 
-The evaluator currently detects denied undeclared network access, agent-control file mutation, and credential exposure markers. High/critical findings form a non-compensable security gate.
+### Enroot
 
-## Evidence and ranking
+Enroot remains a performance/compatibility reference only; it is not used as the primary hostile-code security boundary.
 
-Raw measurements are kept separate from aggregate score. Current scoring dimensions include task success, assertion pass rate, reproducibility rate, least privilege, security violations, latency p50/p95, input/output tokens, token efficiency, estimated cost, and recovery success.
+## Adversarial benchmark
 
-Compatibility cells are keyed by Skill × Agent × Runtime × Model so model/runtime confounders are not silently pooled. Popularity, stars, downloads, and publisher reputation are metadata only and do not increase correctness or security scores.
+`skill-native materialize-fixtures <dir>` produces executable synthetic Skill packages covering benign writes, prompt/code injection, credential access, undeclared egress, persistence/control-file mutation, and sandbox-boundary probes. Hidden variants use seeded case IDs to reduce hard-coded benchmark behavior. A MalSkillBench-compatible JSONL importer keeps the external corpus and its licensing separate from this repository.
 
-## Status
+Every derived security finding references an immutable `evidence_id`. High/Critical violations trip a non-compensable security gate even when the task itself succeeds.
 
-Active implementation is tracked in GitHub Issues and Draft PR #7. Deterministic/unit paths are CI-verified. Account-backed OpenShell/Cloudflare claims remain explicitly open until live runtime evidence exists.
+## Ranking and reports
+
+`ScorePolicy v0.4` versions the aggregate weights:
+
+- correctness: 70%
+- reproducibility: 20%
+- least privilege: 10%
+- any High/Critical security gate failure: aggregate score = 0
+
+Latency, tokens, estimated cost, recovery, denied-network counts, and other measurements remain visible as raw dimensions. Reports add Wilson confidence intervals and multi-axis verification: a Skill is not globally `verified` from repeated runs in one cell; the default policy requires coverage across at least two Agents, two Runtimes, and two Models with sufficient samples in every cell.
+
+```bash
+skill-native build-report matrix-input.jsonl --output report.json
+```
+
+## Verification
+
+`.github/workflows/unit.yml` verifies the Python evidence/evaluation core and type-checks both Cloudflare runtime projects. `.github/workflows/integration.yml` performs a live public GitHub ingestion on pull requests and exposes explicit dispatch jobs for real OpenShell and Cloudflare account-backed validation.
+
+The project distinguishes three states:
+
+- **implemented**: code + deterministic tests exist;
+- **integration-verified**: a real external service/runtime produced evidence;
+- **runtime-verified**: the evidence bundle satisfies the security/runtime assertions for that exact pinned artifact.
+
+This distinction prevents a green mock test from being represented as proof that an external sandbox or provider was actually exercised.
