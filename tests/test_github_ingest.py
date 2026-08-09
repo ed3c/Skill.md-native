@@ -1,4 +1,5 @@
 import io
+import json
 import tarfile
 import tempfile
 import unittest
@@ -45,13 +46,17 @@ class GitHubIngestTests(unittest.TestCase):
             ref="main",
             skill_path="skills/demo",
         )
-        with tempfile.TemporaryDirectory() as td:
-            result = GitHubIngestor(client=client).ingest(source, td)
+        with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as pd:
+            result = GitHubIngestor(client=client).ingest(source, td, provenance_dir=pd)
             self.assertEqual(result.commit_sha, sha)
             self.assertTrue((Path(td) / "SKILL.md").is_file())
             self.assertEqual(result.provenance.attestations[0].immutable_ref, sha)
             self.assertEqual(result.provenance.license_expression, "MIT")
             self.assertIn("requirements.txt", result.provenance.dependency_files)
+            self.assertEqual(len(result.provenance_digest), 64)
+            self.assertIsNotNone(result.provenance_path)
+            payload = json.loads(result.provenance_path.read_text())
+            self.assertEqual(payload["content_sha256"], result.provenance.content_sha256)
 
     def test_missing_skill_path_fails(self):
         sha = "b" * 40
