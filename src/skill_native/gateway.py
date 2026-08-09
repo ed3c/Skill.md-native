@@ -6,37 +6,76 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from .policy import ProviderPolicy, ReceiptLedger
 from .providers import ProviderError, ProviderRouter
 
 
 class InferenceGateway:
-    """Small OpenAI-compatible broker for sandboxed Agent traffic.
+    """OpenAI-compatible broker for sandboxed Agent traffic.
 
-    The gateway owns provider credentials outside the Skill workspace. A caller
-    supplies only model/messages and optional routing metadata; raw upstream
-    credentials are never returned to the caller.
+    The gateway owns provider credentials outside the Skill workspace. Routing
+    policy and budget enforcement happen before provider selection. Every
+    upstream attempt is persisted to the receipt ledger when one is configured.
     """
 
-    def __init__(self, router: ProviderRouter) -> None:
+    def __init__(
+        self,
+        router: ProviderRouter,
+        *,
+        policy: ProviderPolicy | None = None,
+        ledger: ReceiptLedger | None = None,
+    ) -> None:
         self.router = router
+        self.policy = policy or ProviderPolicy()
+        self.ledger = ledger
+
+    def _eligible_router(self) -> ProviderRouter:
+        providers = self.policy.filter(self.router.providers)
+        if not providers:
+            raise RuntimeError("provider policy leaves no eligible inference provider")
+        clients = {
+            name: adapter.client
+            for name, adapter in self.router.adapters.items()
+            if name in {p.name for p in providers}
+        }
+        return ProviderRouter(providers, clients=clients)
+
+    def _persist_new_receipts(self, router: ProviderRouter, start_index: int) -> None:
+        if self.ledger is None:
+            return
+        for receipt in router.attempt_receipts[start_index:]:
+            self.ledger.append(receipt)
 
     def chat_completions(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any], dict[str, str]]:
         messages = payload.get("messages")
         if not isinstance(messages, list) or not messages:
             return 400, {"error": {"message": "messages must be a non-empty list"}}, {}
 
-        provider = payload.pop("skill_native_provider", None)
+        if self.ledger is not None:
+            try:
+                self.ledger.assert_budget(self.policy)
+            except RuntimeError as exc:
+                return 429, {"error": {"message": str(exc), "type": "skill_native_budget_exhausted"}}, {}
+
+        provider = payload.get("skill_native_provider")
         max_tokens = payload.get("max_tokens")
         temperature = payload.get("temperature", 0.0)
         started = time.time()
         try:
-            result = self.router.complete(
+            active_router = self._eligible_router()
+        except RuntimeError as exc:
+            return 503, {"error": {"message": str(exc), "type": "skill_native_policy_error"}}, {}
+
+        receipt_start = len(active_router.attempt_receipts)
+        try:
+            result = active_router.complete(
                 messages,
                 required_provider=provider,
                 max_tokens=max_tokens,
                 temperature=temperature,
             )
         except ProviderError as exc:
+            self._persist_new_receipts(active_router, receipt_start)
             code = 429 if exc.receipt.error == "http_429" else 502
             return (
                 code,
@@ -50,7 +89,11 @@ class InferenceGateway:
                 },
                 {"x-skill-native-provider": exc.receipt.provider},
             )
+        except RuntimeError as exc:
+            self._persist_new_receipts(active_router, receipt_start)
+            return 503, {"error": {"message": str(exc), "type": "skill_native_policy_error"}}, {}
 
+        self._persist_new_receipts(active_router, receipt_start)
         created = int(started)
         body = {
             "id": f"chatcmpl-skill-native-{uuid.uuid4().hex}",
@@ -113,8 +156,18 @@ def make_handler(gateway: InferenceGateway):
     return Handler
 
 
-def serve(router: ProviderRouter, host: str = "127.0.0.1", port: int = 8787) -> None:
-    server = ThreadingHTTPServer((host, port), make_handler(InferenceGateway(router)))
+def serve(
+    router: ProviderRouter,
+    host: str = "127.0.0.1",
+    port: int = 8787,
+    *,
+    policy: ProviderPolicy | None = None,
+    ledger: ReceiptLedger | None = None,
+) -> None:
+    server = ThreadingHTTPServer(
+        (host, port),
+        make_handler(InferenceGateway(router, policy=policy, ledger=ledger)),
+    )
     try:
         server.serve_forever()
     finally:
