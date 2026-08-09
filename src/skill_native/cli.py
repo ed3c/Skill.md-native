@@ -7,8 +7,10 @@ from pathlib import Path
 import yaml
 
 from .gateway import serve
+from .github_ingest import GitHubIngestor, GitHubSkillSource
 from .models import RunSpec
 from .openshell import OpenShellPolicyCompiler
+from .policy import ProviderPolicy, ReceiptLedger
 from .providers import ProviderConfig, ProviderKind, ProviderRouter
 from .runtime import FakeRuntime, OpenShellRuntime, RuntimeAdapter
 
@@ -75,11 +77,66 @@ def main() -> None:
     gateway.add_argument("config", type=Path)
     gateway.add_argument("--host", default="127.0.0.1")
     gateway.add_argument("--port", type=int, default=8787)
+    gateway.add_argument("--local-only", action="store_true")
+    gateway.add_argument("--receipt-ledger", type=Path, default=None)
+    gateway.add_argument("--max-daily-requests", type=int, default=None)
+    gateway.add_argument("--max-daily-tokens", type=int, default=None)
+    gateway.add_argument("--max-daily-cost-usd", type=float, default=None)
+
+    ingest = sub.add_parser(
+        "ingest-github",
+        help="resolve a GitHub Skill ref to an immutable commit and persist provenance",
+    )
+    ingest.add_argument("url")
+    ingest.add_argument("--ref", default="main")
+    ingest.add_argument("--skill-path", default=".")
+    ingest.add_argument("--entrypoint", default="SKILL.md")
+    ingest.add_argument("--output", type=Path, required=True)
+    ingest.add_argument("--provenance-dir", type=Path, required=True)
 
     args = parser.parse_args()
 
     if args.command == "serve-gateway":
-        serve(ProviderRouter(load_providers(args.config)), host=args.host, port=args.port)
+        policy = ProviderPolicy(
+            local_only=args.local_only,
+            max_daily_requests=args.max_daily_requests,
+            max_daily_tokens=args.max_daily_tokens,
+            max_daily_cost_usd=args.max_daily_cost_usd,
+        )
+        ledger = ReceiptLedger(args.receipt_ledger) if args.receipt_ledger else None
+        serve(
+            ProviderRouter(load_providers(args.config)),
+            host=args.host,
+            port=args.port,
+            policy=policy,
+            ledger=ledger,
+        )
+        return
+
+    if args.command == "ingest-github":
+        source = GitHubSkillSource.from_url(
+            args.url,
+            ref=args.ref,
+            skill_path=args.skill_path,
+            entrypoint=args.entrypoint,
+        )
+        result = GitHubIngestor().ingest(
+            source,
+            args.output,
+            provenance_dir=args.provenance_dir,
+        )
+        print(
+            json.dumps(
+                {
+                    "root": str(result.root),
+                    "commit_sha": result.commit_sha,
+                    "content_sha256": result.provenance.content_sha256,
+                    "provenance_digest": result.provenance_digest,
+                    "provenance_path": str(result.provenance_path),
+                },
+                indent=2,
+            )
+        )
         return
 
     if args.command == "probe-provider":
