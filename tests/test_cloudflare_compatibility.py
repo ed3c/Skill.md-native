@@ -15,6 +15,8 @@ class FakeCloudflareClient:
         return CloudflareExecResult(stdout="ok\n", stderr="", exit_code=0, success=True, metadata={"cpu_ms": 12})
     def manifest(self, sandbox_id, root="/workspace"):
         return {"a.txt": "one"} if self.calls == 0 else {"a.txt": "two", "b.txt": "new"}
+    def events(self, sandbox_id):
+        return [{"decision": "deny", "method": "GET", "url": "https://evil.test", "reason": "allowlist", "ts": "now"}]
     def destroy(self, sandbox_id):
         pass
 
@@ -22,7 +24,7 @@ class FakeCloudflareClient:
 def make_spec():
     return RunSpec(
         run_id="cf-1",
-        skill=SkillRef(source_url="https://example.test", commit_or_digest="abc"),
+        skill=SkillRef(source_url="https://example.test", commit_or_digest="abc", provenance_digest="prov123"),
         agent=AgentRef(harness="codex", version="test"),
         model=ModelRef(provider="local", model="m", quota_class="local"),
         runtime=RuntimeRef(backend="cloudflare", version="test", image_digest="test"),
@@ -38,9 +40,11 @@ class CloudflareTests(unittest.TestCase):
         execution = controller.execute(sandbox, ["echo", "ok"])
         evidence = controller.collect("cf-1", execution)
         self.assertEqual(evidence.exit_code, 0)
+        self.assertEqual(evidence.provenance_digest, "prov123")
         self.assertTrue(evidence.runtime_metadata["cold_start"])
         self.assertEqual(evidence.filesystem_after["diff"]["added"], ["b.txt"])
         self.assertEqual(evidence.filesystem_after["diff"]["modified"], ["a.txt"])
+        self.assertEqual(evidence.network[0]["action"], "Denied")
 
     def test_matrix_keeps_model_as_confounder(self):
         controller = CloudflareRuntimeController(FakeCloudflareClient())
