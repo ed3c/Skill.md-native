@@ -76,8 +76,10 @@ class FakeRuntime(RuntimeAdapter):
     def collect(self, run_id: str, execution_id: str) -> EvidenceBundle:
         sandbox_id = execution_id.split(":exec:", 1)[0]
         record = self._runs[sandbox_id]
+        spec: RunSpec = record["spec"]
         return EvidenceBundle(
             run_id=run_id,
+            provenance_digest=spec.skill.provenance_digest,
             exit_code=0,
             stdout="fake runtime execution\n",
             commands=record["commands"],
