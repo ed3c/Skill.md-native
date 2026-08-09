@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .models import EvidenceBundle, RunSpec, RuntimeBackend
+from .openshell import OpenShellController
 
 
 @dataclass(frozen=True)
@@ -88,12 +89,7 @@ class FakeRuntime(RuntimeAdapter):
 
 
 class OpenShellRuntime(RuntimeAdapter):
-    """OpenShell adapter contract.
-
-    The implementation will call the pinned `openshell` CLI and collect policy,
-    network, process, and OCSF/log evidence. Kept fail-closed until that collector
-    is implemented so an incomplete adapter cannot be mistaken for validation.
-    """
+    """OpenShell-backed hostile-skill runtime."""
 
     backend = RuntimeBackend.OPENSHELL
     capabilities = RuntimeCapabilities(
@@ -108,14 +104,17 @@ class OpenShellRuntime(RuntimeAdapter):
         gpu=True,
     )
 
+    def __init__(self, controller: OpenShellController | None = None) -> None:
+        self.controller = controller or OpenShellController()
+
     def prepare(self, spec: RunSpec) -> str:
-        raise NotImplementedError("OpenShell CLI adapter not implemented yet")
+        return self.controller.prepare(spec)
 
     def execute(self, sandbox_id: str, command: list[str]) -> str:
-        raise NotImplementedError("OpenShell CLI adapter not implemented yet")
+        return self.controller.execute(sandbox_id, command)
 
     def collect(self, run_id: str, execution_id: str) -> EvidenceBundle:
-        raise NotImplementedError("OpenShell evidence collector not implemented yet")
+        return self.controller.collect(run_id, execution_id)
 
     def destroy(self, sandbox_id: str) -> None:
-        raise NotImplementedError("OpenShell CLI adapter not implemented yet")
+        self.controller.destroy(sandbox_id)
