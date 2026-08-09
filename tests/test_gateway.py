@@ -61,13 +61,18 @@ class GatewayTests(unittest.TestCase):
                 ledger=ledger,
             )
             status, body, _ = gateway.chat_completions(
-                {"messages": [{"role": "user", "content": "hi"}]}
+                {
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "skill_native_run_id": "run-123",
+                }
             )
             self.assertEqual(status, 200)
             self.assertEqual(body["skill_native_receipt"]["provider"], "local")
-            records = ledger.read()
+            self.assertEqual(body["skill_native_receipt"]["run_id"], "run-123")
+            records = ledger.read(run_id="run-123")
             self.assertEqual(len(records), 1)
             self.assertEqual(records[0]["provider"], "local")
+            self.assertEqual(records[0]["run_id"], "run-123")
 
     def test_budget_exhaustion_stops_before_upstream(self):
         calls = {"count": 0}
