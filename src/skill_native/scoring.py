@@ -15,8 +15,16 @@ from .security import evaluate_security
 
 @dataclass(frozen=True)
 class ScorePolicy:
-    version: str = "v0.3"
+    version: str = "v0.4"
     critical_finding_severities: tuple[str, ...] = ("critical", "high")
+    correctness_weight: float = 0.70
+    reproducibility_weight: float = 0.20
+    least_privilege_weight: float = 0.10
+
+    def __post_init__(self) -> None:
+        total = self.correctness_weight + self.reproducibility_weight + self.least_privilege_weight
+        if abs(total - 1.0) > 1e-9:
+            raise ValueError("score weights must sum to 1.0")
 
 
 @dataclass(frozen=True)
@@ -80,8 +88,7 @@ def score_evidence(runs: Iterable[EvidenceBundle], policy: ScorePolicy | None = 
         exit_success.append(exit_ok)
         signatures.append((run.exit_code, tuple(sorted(run.assertions.items())), evaluation.security_gate))
         denied_network += sum(
-            1
-            for event in run.network
+            1 for event in run.network
             if str(event.get("action", event.get("action_name", ""))).lower() == "denied"
         )
         for receipt in run.inference:
@@ -109,7 +116,12 @@ def score_evidence(runs: Iterable[EvidenceBundle], policy: ScorePolicy | None = 
     else:
         confidence = "exploratory"
 
-    aggregate = (task_success * 0.55) + (assertion_pass_rate * 0.45)
+    correctness = (task_success * 0.55) + (assertion_pass_rate * 0.45)
+    aggregate = (
+        correctness * policy.correctness_weight
+        + reproducibility_rate * policy.reproducibility_weight
+        + least_privilege * policy.least_privilege_weight
+    )
     if security_gate == "fail":
         aggregate = 0.0
 
@@ -118,6 +130,7 @@ def score_evidence(runs: Iterable[EvidenceBundle], policy: ScorePolicy | None = 
         "task_success_ci95_low": success_ci_low,
         "task_success_ci95_high": success_ci_high,
         "assertion_pass_rate": assertion_pass_rate,
+        "correctness": correctness,
         "reproducibility_rate": reproducibility_rate,
         "least_privilege": least_privilege,
         "critical_policy_violations": critical,
