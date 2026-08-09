@@ -69,11 +69,17 @@ The OpenShell adapter currently:
 
 Live denied-egress, L7 denial, and credential non-exposure fixtures remain open until a real OpenShell gateway is available.
 
+## Security benchmark
+
+`security_benchmark.py` contains matched synthetic malicious/benign evidence fixtures and reports true positives, false positives, true negatives, false negatives, recall, and false-positive rate. These deterministic fixtures validate the evaluator itself; they do not substitute for live malicious Skill execution or MalSkillBench integration.
+
+The evaluator currently detects denied undeclared network access, agent-control file mutation, and credential exposure markers. High/critical findings form a non-compensable security gate.
+
 ## Evidence and ranking
 
-Every run is designed to link immutable provenance, runtime policy/attestation, process/network/filesystem traces, model receipts, assertions, and security findings. High/critical findings trigger a non-compensable security gate. Compatibility cells are keyed by Skill × Agent × Runtime × Model so model/runtime confounders are not silently pooled.
+Raw measurements are kept separate from aggregate score. Current scoring dimensions include task success, assertion pass rate, reproducibility rate, least privilege, security violations, latency p50/p95, input/output tokens, token efficiency, estimated cost, and recovery success.
 
-Popularity, stars, downloads, and publisher reputation are metadata only and do not increase correctness or security scores.
+Compatibility cells are keyed by Skill × Agent × Runtime × Model so model/runtime confounders are not silently pooled. Popularity, stars, downloads, and publisher reputation are metadata only and do not increase correctness or security scores.
 
 ## Status
 
