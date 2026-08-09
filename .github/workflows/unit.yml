@@ -29,6 +29,7 @@ jobs:
   cloudflare-contracts:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         project: [cloudflare/worker, cloudflare/dynamic-worker]
     defaults:
