@@ -10,7 +10,7 @@ type Env = {
 
 type OutboundContext = {
   containerId: string;
-  params?: Record<string, unknown>;
+  params: unknown;
 };
 
 type EgressEvent = {
