@@ -4,13 +4,13 @@ Runtime-verified evidence, evaluation, security, compatibility, and outcome rank
 
 ## Mission
 
-This repository treats every third-party `SKILL.md` package as an untrusted executable supply-chain artifact. It ingests skills from multiple registries, executes them in isolated runtimes, captures evidence, evaluates behavior, and ranks outcomes across agent/runtime combinations.
+This repository treats every third-party `SKILL.md` package as an untrusted executable supply-chain artifact. It ingests skills from multiple registries, executes them in isolated runtimes, captures evidence, evaluates behavior, and ranks outcomes across agent/runtime/model combinations.
 
 ## Core pipeline
 
 ```text
 Registry Sources
-  -> Ingestion + provenance
+  -> Immutable ingestion + provenance
   -> Static inspection
   -> Runtime sandbox execution
   -> Evidence capture
@@ -20,103 +20,61 @@ Registry Sources
   -> Ranked evidence ledger
 ```
 
+## Immutable GitHub ingestion
+
+Resolve a mutable GitHub ref to an immutable commit, materialize only the requested Skill subtree, and persist a digest-addressed provenance record:
+
+```bash
+skill-native ingest-github https://github.com/OWNER/REPO \
+  --ref main \
+  --skill-path path/to/skill \
+  --output .skill-native/artifacts/demo \
+  --provenance-dir .skill-native/provenance
+```
+
+The provenance record contains the resolved commit SHA, deterministic content SHA-256, source/publisher attestation, license evidence, dependency manifests, and a provenance digest. `RunSpec.skill.provenance_digest` and `EvidenceBundle.provenance_digest` are reserved for linking runtime evidence to that immutable record.
+
+## Governed inference gateway
+
+The gateway supports Groq, Gemini, Cloudflare Workers AI, and local OpenAI-compatible endpoints while keeping provider credentials outside the Skill workspace. It can enforce a strict local-only policy and independent operator budgets:
+
+```bash
+skill-native serve-gateway examples/providers.yaml \
+  --local-only \
+  --receipt-ledger .skill-native/evidence/inference.jsonl \
+  --max-daily-requests 100 \
+  --max-daily-tokens 100000
+```
+
+A sandboxed Agent may include `skill_native_run_id` in its `/v1/chat/completions` request. The returned receipt and append-only ledger entry carry that run id, allowing inference evidence to be joined to the parent runtime run without revealing raw upstream credentials.
+
+No credential harvesting, account rotation, quota bypass, or unauthorized proxying is permitted by project policy.
+
 ## Runtime strategy
 
-- **NVIDIA OpenShell**: primary security/reference runtime. Declarative network/filesystem policy, credential isolation, and structured observability.
-- **Cloudflare Sandboxes / Dynamic Workers**: cloud runtime backend for scalable and low-cost experiments.
-- **NVIDIA Enroot**: performance-oriented compatibility backend only. It is intentionally not treated as the main security boundary for untrusted skills.
-- Additional runtimes can implement the backend interface without changing the evaluation contract.
+- **NVIDIA OpenShell**: primary hostile-code security/reference runtime. Deny-by-default networking, Landlock, OCSF evidence, filesystem diff, and gateway/runtime attestation.
+- **Cloudflare Sandbox / Dynamic Workers**: cloud runtime path with normalized evidence and explicit resource/cost accounting.
+- **NVIDIA Enroot**: compatibility/performance backend only; not treated as a primary hostile-code isolation boundary.
+- **Fake runtime**: deterministic contract and CI testing.
 
 ## OpenShell implementation
 
-The OpenShell adapter is implemented around the current non-interactive CLI surface:
+The OpenShell adapter currently:
 
-- compile a `RunSpec` into OpenShell policy schema v1;
-- enforce `deny-by-default` networking;
-- default legacy `allowed_hosts` to read-only REST access;
-- require explicit `network_rules` for mutating access;
-- use Landlock `hard_requirement` by default;
-- create a named sandbox and capture machine-readable sandbox metadata;
-- enable OCSF JSON export;
-- execute one-shot commands with `openshell sandbox exec`;
-- capture the effective policy, sandbox logs, process/network/finding OCSF events, stdout/stderr, exit status, and policy digest;
-- fail closed when mandatory evidence channels are missing.
+- compiles `RunSpec` into OpenShell policy schema v1;
+- enforces deny-by-default networking and hard Landlock by default;
+- requires explicit network rules for mutating access;
+- captures sandbox/gateway metadata, effective policy, logs, OCSF events, filesystem before/after manifests, stdout/stderr, exit status, and policy digest;
+- fails closed when mandatory evidence channels are unavailable.
 
-OpenShell remains alpha software, so production evaluation should pin the CLI/runtime version and sandbox image digest.
+Live denied-egress, L7 denial, and credential non-exposure fixtures remain open until a real OpenShell gateway is available.
 
-### CLI
+## Evidence and ranking
 
-Validate a run specification:
+Every run is designed to link immutable provenance, runtime policy/attestation, process/network/filesystem traces, model receipts, assertions, and security findings. High/critical findings trigger a non-compensable security gate. Compatibility cells are keyed by Skill × Agent × Runtime × Model so model/runtime confounders are not silently pooled.
 
-```bash
-skill-native validate examples/run.openshell.yaml
-```
-
-Preview the exact OpenShell policy before executing anything:
-
-```bash
-skill-native compile-openshell-policy examples/run.openshell.yaml
-```
-
-Run a command in an OpenShell sandbox and emit normalized evidence JSON:
-
-```bash
-skill-native run-openshell examples/run.openshell.yaml -- /bin/sh -lc 'echo runtime-ok'
-```
-
-The adapter refuses to emit a successful evidence bundle if effective policy, sandbox logs, or OCSF JSON evidence cannot be collected.
-
-## LLM inference strategy
-
-The runtime uses a provider router with explicit quotas and policy. Only official, user-authorized free tiers or local/open-weight inference are eligible for the default `free` pool. No credential harvesting, account rotation, quota bypass, or unauthorized proxying is allowed.
-
-Initial candidates:
-
-- Groq Free Plan
-- Gemini Developer API Free Tier
-- Cloudflare Workers AI free daily allocation
-- local/self-hosted OpenAI-compatible endpoints
-
-The router records provider, model, latency, token usage, rate-limit metadata, and failure reason for every call so model availability cannot silently bias benchmark results.
-
-## Evidence contract
-
-Every run produces an immutable run manifest containing:
-
-- skill source and commit/digest
-- registry and publisher metadata
-- runtime backend + image digest
-- agent harness and version
-- model provider/model
-- sandbox policy hash
-- filesystem diff
-- process/command trace
-- network destinations and denied requests
-- stdout/stderr
-- tool calls
-- exit status
-- task assertions
-- latency/token/cost accounting
-- security findings
-- reproducibility metadata
-
-## Ranking dimensions
-
-1. Task success
-2. Reproducibility
-3. Security behavior
-4. Permission minimization
-5. Cross-agent compatibility
-6. Cross-runtime compatibility
-7. Latency
-8. Token efficiency
-9. Monetary cost
-10. Failure recovery
-
-A skill is never ranked highly from stars/downloads alone.
+Popularity, stars, downloads, and publisher reputation are metadata only and do not increase correctness or security scores.
 
 ## Status
 
-OpenShell runtime adapter v0 is implemented with deterministic unit tests. Live OpenShell integration still requires a host/gateway with OpenShell installed; CI can validate the compiler and controller behavior without privileged runtime access.
-
-See `docs/ARCHITECTURE.md`, `docs/EVALUATION_CONTRACT.md`, and GitHub Issues for the implementation roadmap.
+Active implementation is tracked in GitHub Issues and Draft PR #7. Deterministic/unit paths are CI-verified. Account-backed OpenShell/Cloudflare claims remain explicitly open until live runtime evidence exists.
