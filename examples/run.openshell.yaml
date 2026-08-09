@@ -1,0 +1,35 @@
+run_id: openshell-smoke-001
+skill:
+  source_url: https://github.com/example/example-skill
+  commit_or_digest: REPLACE_WITH_IMMUTABLE_COMMIT
+  entrypoint: SKILL.md
+agent:
+  harness: codex
+  version: PIN_ME
+model:
+  provider: local
+  model: test-model
+  quota_class: local
+runtime:
+  backend: openshell
+  version: v0.0.44
+  image_digest: PIN_IMAGE_DIGEST
+policy:
+  network: deny-by-default
+  allowed_hosts: []
+  network_rules: []
+  filesystem: ephemeral
+  secrets: brokered
+  landlock_compatibility: hard_requirement
+scenario:
+  id: openshell-smoke
+  task: Verify sandbox lifecycle, effective policy capture, and OCSF evidence.
+  assertions:
+    - runtime_completed
+    - effective_policy_captured
+    - ocsf_captured
+limits:
+  timeout_seconds: 60
+  max_model_calls: 0
+  max_output_tokens: 0
+  max_network_requests: 0
