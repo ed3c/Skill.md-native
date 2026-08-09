@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import math
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from statistics import mean, median
 from typing import Iterable
 
@@ -11,7 +15,7 @@ from .security import evaluate_security
 
 @dataclass(frozen=True)
 class ScorePolicy:
-    version: str = "v0.2"
+    version: str = "v0.3"
     critical_finding_severities: tuple[str, ...] = ("critical", "high")
 
 
@@ -36,6 +40,16 @@ def _percentile(values: list[float], q: float) -> float:
     ordered = sorted(values)
     index = min(len(ordered) - 1, max(0, round((len(ordered) - 1) * q)))
     return float(ordered[index])
+
+
+def _wilson_interval(successes: int, total: int, z: float = 1.959963984540054) -> tuple[float, float]:
+    if total <= 0:
+        return 0.0, 0.0
+    p = successes / total
+    denom = 1 + (z * z / total)
+    centre = p + (z * z / (2 * total))
+    spread = z * math.sqrt((p * (1 - p) / total) + (z * z / (4 * total * total)))
+    return max(0.0, (centre - spread) / denom), min(1.0, (centre + spread) / denom)
 
 
 def score_evidence(runs: Iterable[EvidenceBundle], policy: ScorePolicy | None = None) -> ScoreResult:
@@ -85,6 +99,8 @@ def score_evidence(runs: Iterable[EvidenceBundle], policy: ScorePolicy | None = 
     least_privilege = 1.0 if denied_network == 0 and critical == 0 else 0.0
     recovery_success = mean(recovery_values) if recovery_values else 0.0
     security_gate = "fail" if critical else "pass"
+    successes = int(sum(exit_success))
+    success_ci_low, success_ci_high = _wilson_interval(successes, len(items))
 
     if len(items) >= 10:
         confidence = "verified"
@@ -93,14 +109,14 @@ def score_evidence(runs: Iterable[EvidenceBundle], policy: ScorePolicy | None = 
     else:
         confidence = "exploratory"
 
-    # Correctness remains the base score. Security is a non-compensable gate;
-    # other dimensions are preserved raw until a versioned weighting policy is adopted.
     aggregate = (task_success * 0.55) + (assertion_pass_rate * 0.45)
     if security_gate == "fail":
         aggregate = 0.0
 
     raw = {
         "task_success": task_success,
+        "task_success_ci95_low": success_ci_low,
+        "task_success_ci95_high": success_ci_high,
         "assertion_pass_rate": assertion_pass_rate,
         "reproducibility_rate": reproducibility_rate,
         "least_privilege": least_privilege,
@@ -122,3 +138,19 @@ def score_evidence(runs: Iterable[EvidenceBundle], policy: ScorePolicy | None = 
         raw_metrics=raw,
         aggregate_score=aggregate,
     )
+
+
+def score_artifact_payload(result: ScoreResult, policy: ScorePolicy) -> dict:
+    return {"policy": asdict(policy), "result": asdict(result)}
+
+
+def persist_score_artifact(result: ScoreResult, policy: ScorePolicy, directory: str | Path) -> tuple[str, Path]:
+    payload = score_artifact_payload(result, policy)
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    digest = hashlib.sha256(encoded).hexdigest()
+    root = Path(directory)
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f"{digest}.json"
+    if not path.exists():
+        path.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    return digest, path
