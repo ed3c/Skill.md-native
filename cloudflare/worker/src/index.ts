@@ -1,4 +1,4 @@
-import { ContainerProxy, getSandbox, Sandbox, type OutboundHandlerContext } from "@cloudflare/sandbox";
+import { ContainerProxy, getSandbox, Sandbox } from "@cloudflare/sandbox";
 
 export { ContainerProxy };
 
@@ -6,6 +6,11 @@ type Env = {
   Sandbox: DurableObjectNamespace<SkillSandbox>;
   Telemetry: DurableObjectNamespace;
   PROVIDER_API_KEY?: string;
+};
+
+type OutboundContext = {
+  containerId: string;
+  params?: Record<string, unknown>;
 };
 
 type EgressEvent = {
@@ -17,7 +22,7 @@ type EgressEvent = {
   reason: string;
 };
 
-async function recordEgress(env: Env, ctx: OutboundHandlerContext, event: EgressEvent) {
+async function recordEgress(env: Env, ctx: OutboundContext, event: EgressEvent) {
   const stub = env.Telemetry.get(env.Telemetry.idFromName(ctx.containerId));
   await stub.fetch("https://telemetry.local/event", {
     method: "POST",
@@ -31,7 +36,7 @@ export class SkillSandbox extends Sandbox {
   allowedHosts = ["api.groq.com", "generativelanguage.googleapis.com", "api.cloudflare.com"];
 }
 
-SkillSandbox.outbound = async (request: Request, env: Env, ctx: OutboundHandlerContext) => {
+SkillSandbox.outbound = async (request: Request, env: Env, ctx: OutboundContext) => {
   const url = new URL(request.url);
   if (!["GET", "HEAD", "OPTIONS", "POST"].includes(request.method)) {
     await recordEgress(env, ctx, {
@@ -48,7 +53,7 @@ SkillSandbox.outbound = async (request: Request, env: Env, ctx: OutboundHandlerC
 };
 
 SkillSandbox.outboundByHost = {
-  "api.groq.com": async (request: Request, env: Env, ctx: OutboundHandlerContext) => {
+  "api.groq.com": async (request: Request, env: Env, ctx: OutboundContext) => {
     const forwarded = new Request(request);
     if (env.PROVIDER_API_KEY) forwarded.headers.set("authorization", `Bearer ${env.PROVIDER_API_KEY}`);
     await recordEgress(env, ctx, {
