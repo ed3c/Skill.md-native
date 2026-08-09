@@ -2,6 +2,8 @@
 
 Runtime-verified evidence, security, compatibility, and outcome ranking for Agent Skills across registries.
 
+> **Coding/AI Agents:** read [`AGENTS.md`](./AGENTS.md) before making changes. It is the canonical product requirements, security invariants, roadmap, evidence contract, CI rules, and Definition of Done for this repository.
+
 ## Mission
 
 Every third-party `SKILL.md` package is treated as an untrusted executable supply-chain artifact. The project pins its origin, executes it through isolated runtimes, captures content-addressed evidence, evaluates security behavior, and ranks results without silently mixing Agent, Runtime, or Model confounders.
