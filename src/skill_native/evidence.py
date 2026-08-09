@@ -45,7 +45,7 @@ def index_evidence(bundle: EvidenceBundle) -> dict[str, dict[str, Any]]:
 def attach_run_receipts(bundle: EvidenceBundle, ledger: ReceiptLedger | None) -> EvidenceBundle:
     if ledger is None:
         return bundle
-    receipts = [InferenceReceipt.model_validate(r) for r in ledger.for_run(bundle.run_id)]
+    receipts = [InferenceReceipt.model_validate(r) for r in ledger.read(run_id=bundle.run_id)]
     return bundle.model_copy(update={"inference": receipts})
 
 
