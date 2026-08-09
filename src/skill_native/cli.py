@@ -6,6 +6,7 @@ from pathlib import Path
 
 import yaml
 
+from .gateway import serve
 from .models import RunSpec
 from .openshell import OpenShellPolicyCompiler
 from .providers import ProviderConfig, ProviderKind, ProviderRouter
@@ -67,7 +68,19 @@ def main() -> None:
     probe.add_argument("--provider", default=None)
     probe.add_argument("--max-tokens", type=int, default=128)
 
+    gateway = sub.add_parser(
+        "serve-gateway",
+        help="serve a local OpenAI-compatible inference broker for sandboxed agents",
+    )
+    gateway.add_argument("config", type=Path)
+    gateway.add_argument("--host", default="127.0.0.1")
+    gateway.add_argument("--port", type=int, default=8787)
+
     args = parser.parse_args()
+
+    if args.command == "serve-gateway":
+        serve(ProviderRouter(load_providers(args.config)), host=args.host, port=args.port)
+        return
 
     if args.command == "probe-provider":
         router = ProviderRouter(load_providers(args.config))
