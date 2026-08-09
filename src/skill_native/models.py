@@ -59,6 +59,8 @@ class SandboxPolicy(BaseModel):
     filesystem: str = "ephemeral"
     secrets: str = "brokered"
     landlock_compatibility: str = "hard_requirement"
+    provider_names: list[str] = Field(default_factory=list)
+    secret_env_names: list[str] = Field(default_factory=list)
 
 
 class Scenario(BaseModel):
