@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,3 +23,23 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Compile smoke policy
         run: skill-native compile-openshell-policy examples/run.openshell.yaml > /tmp/openshell-policy.yaml
+      - name: Materialize adversarial fixtures
+        run: skill-native materialize-fixtures /tmp/fixtures
+
+  cloudflare-contracts:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: [cloudflare/worker, cloudflare/dynamic-worker]
+    defaults:
+      run:
+        working-directory: ${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ${{ matrix.project }}/package.json
+      - run: npm install --ignore-scripts
+      - run: npm run typecheck
