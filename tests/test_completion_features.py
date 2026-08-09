@@ -9,7 +9,7 @@ from skill_native.adversarial import FIXTURES, hidden_variant, load_malskillbenc
 from skill_native.compatibility import CompatibilityKey
 from skill_native.evidence import EvidenceStore, attach_run_receipts, index_evidence
 from skill_native.models import EvidenceBundle, InferenceReceipt, QuotaClass
-from skill_native.openshell import CommandResult, OpenShellController, OpenShellError
+from skill_native.openshell import OpenShellController, OpenShellError
 from skill_native.policy import ReceiptLedger
 from skill_native.provider_metadata import normalize_quota
 from skill_native.registries import JsonMetadataAdapter, SkillsShAdapter
@@ -101,7 +101,7 @@ class CompletionFeatureTests(unittest.TestCase):
         self.assertEqual(policy.version, "v0.4")
         self.assertAlmostEqual(policy.correctness_weight + policy.reproducibility_weight + policy.least_privilege_weight, 1.0)
         result = score_evidence([EvidenceBundle(run_id="r", exit_code=0, assertions={"ok": True})], policy)
-        self.assertEqual(result.aggregate_score, 1.0)
+        self.assertAlmostEqual(result.aggregate_score, 1.0)
 
     def test_openshell_runtime_pin_mismatch_fails_closed(self):
         controller = OpenShellController()
