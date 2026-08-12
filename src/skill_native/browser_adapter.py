@@ -15,7 +15,7 @@ from .browser_contract import (
     encode_browser_runner_config,
     parse_browser_receipt,
 )
-from .evidence import mark_evidence_captured
+from .evidence import canonical_digest, mark_evidence_captured
 from .harness_contract import (
     HarnessContractError,
     HarnessDomain,
@@ -106,6 +106,21 @@ class BrowserPlaywrightAdapter:
                 receipt.artifacts,
                 evidence.runtime_metadata,
             )
+            artifacts_by_kind: dict[str, list[dict[str, Any]]] = {}
+            for artifact in receipt.artifacts:
+                artifacts_by_kind.setdefault(artifact.kind, []).append(
+                    artifact.model_dump(mode="json")
+                )
+            dom_snapshot = _single_artifact(artifacts_by_kind.get("dom", []))
+            accessibility_snapshot = _single_artifact(
+                artifacts_by_kind.get("aria", [])
+            )
+            normalized_network = []
+            for index, event in enumerate(receipt.network_events):
+                payload = {"sequence": index, **event}
+                normalized_network.append(
+                    {**payload, "evidence_id": canonical_digest(payload)}
+                )
         except Exception as exc:  # noqa: BLE001 - malformed runner output becomes evidence
             assertions.update(
                 {
@@ -136,11 +151,6 @@ class BrowserPlaywrightAdapter:
                 "browser_assertions_passed": all(receipt.assertions.values()),
             }
         )
-        artifacts_by_kind: dict[str, list[dict[str, Any]]] = {}
-        for artifact in receipt.artifacts:
-            artifacts_by_kind.setdefault(artifact.kind, []).append(
-                artifact.model_dump(mode="json")
-            )
         metadata["browser"] = {
             "receipt_valid": True,
             "receipt_digest": receipt.receipt_digest,
@@ -156,15 +166,6 @@ class BrowserPlaywrightAdapter:
             "artifact_root": str(artifact_root),
             "artifact_bytes": total_artifact_bytes,
         }
-        normalized_network = [
-            {
-                **event,
-                "evidence_id": hashlib.sha256(
-                    repr(sorted(event.items())).encode("utf-8")
-                ).hexdigest(),
-            }
-            for event in receipt.network_events
-        ]
         normalized = evidence.model_copy(
             update={
                 "assertions": assertions,
@@ -174,10 +175,8 @@ class BrowserPlaywrightAdapter:
                 "browser_events": [
                     event.model_dump(mode="json") for event in receipt.events
                 ],
-                "dom_snapshot": _single_artifact(artifacts_by_kind.get("dom", [])),
-                "accessibility_snapshot": _single_artifact(
-                    artifacts_by_kind.get("aria", [])
-                ),
+                "dom_snapshot": dom_snapshot,
+                "accessibility_snapshot": accessibility_snapshot,
                 "network_trace": list(receipt.network_events),
                 "screenshots": artifacts_by_kind.get("screenshot", []),
                 "downloads": artifacts_by_kind.get("download", []),
