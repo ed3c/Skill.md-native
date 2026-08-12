@@ -1,0 +1,35 @@
+run_id: browser-loopback-example
+skill:
+  source_url: https://example.test/skill-md-native/browser-loopback
+  commit_or_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  entrypoint: SKILL.md
+  provenance_digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+agent:
+  harness: browser-playwright
+  version: fixture
+model:
+  provider: none
+  model: deterministic
+  quota_class: local
+runtime:
+  backend: fake
+  version: local-browser-fixture-v1
+  image_digest: sha256:fixture
+policy:
+  network: deny-by-default
+  allowed_hosts: []
+  network_rules: []
+  filesystem: ephemeral
+  secrets: brokered
+  landlock_compatibility: hard_requirement
+  provider_names: []
+  secret_env_names: []
+scenario:
+  id: browser-loopback
+  task: Complete the deterministic loopback browser flow.
+  assertions: []
+limits:
+  timeout_seconds: 120
+  max_model_calls: 0
+  max_output_tokens: 0
+  max_network_requests: 500
