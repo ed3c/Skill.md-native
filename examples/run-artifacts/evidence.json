@@ -1,0 +1,41 @@
+{
+  "agent_events": [],
+  "assertions": {
+    "runtime_completed": true
+  },
+  "coding_receipt": {},
+  "commands": [
+    {
+      "exit_code": 0,
+      "requested_argv": [
+        "true"
+      ]
+    }
+  ],
+  "exit_code": 0,
+  "filesystem_after": {},
+  "filesystem_before": {},
+  "findings": [],
+  "inference": [],
+  "network": [],
+  "ocsf_events": [],
+  "policy": {},
+  "processes": [],
+  "provenance_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "run_id": "run-artifacts-fixture",
+  "runtime_metadata": {
+    "evidence_contract": {
+      "captured": [
+        "exit_code",
+        "stderr",
+        "runtime_metadata"
+      ],
+      "schema_version": "1.0"
+    },
+    "runtime_backend": "fake"
+  },
+  "stderr": "",
+  "stdout": "",
+  "test_results": [],
+  "workspace_diff": {}
+}
