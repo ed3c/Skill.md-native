@@ -8,14 +8,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Mapping
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .attestation_contract import (
     AttestationError,
-    AttestationVerificationReceipt,
+    AttestationTrustPolicy,
     DSSEEnvelope,
 )
-from .attestation_crypto import envelope_digest, parse_statement, statement_digest
+from .attestation_crypto import (
+    envelope_digest,
+    parse_statement,
+    statement_digest,
+    verify_attestation,
+)
+from .run_artifact_bundle import RunArtifactBundle
 from .run_artifact_common import canonical_digest
 
 try:
@@ -140,21 +147,25 @@ class TransparencyLog:
     def append(
         self,
         envelope: DSSEEnvelope | Mapping[str, Any],
-        verification_receipt: AttestationVerificationReceipt | Mapping[str, Any],
+        bundle: RunArtifactBundle | Mapping[str, Any],
+        public_key: Ed25519PublicKey,
+        policy: AttestationTrustPolicy | Mapping[str, Any],
     ) -> TransparencyInclusionReceipt:
         if fcntl is None:
             raise AttestationError(
                 "atomic transparency append requires fcntl on this platform"
             )
+        self._reject_symlink_paths()
         envelope_model = (
             envelope
             if isinstance(envelope, DSSEEnvelope)
             else DSSEEnvelope.model_validate(envelope)
         )
-        verification = (
-            verification_receipt
-            if isinstance(verification_receipt, AttestationVerificationReceipt)
-            else AttestationVerificationReceipt.model_validate(verification_receipt)
+        verification = verify_attestation(
+            bundle,
+            envelope_model,
+            public_key,
+            policy,
         )
         envelope_hash = envelope_digest(envelope_model)
         statement = parse_statement(envelope_model)
@@ -167,6 +178,7 @@ class TransparencyLog:
             raise AttestationError("verification receipt does not match bundle predicate")
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._reject_symlink_paths()
         with self.lock_path.open("a+b") as lock_handle:
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
             entries, _ = self._verify_unlocked(allow_missing_empty_checkpoint=True)
@@ -210,6 +222,7 @@ class TransparencyLog:
                 "atomic transparency verification requires fcntl on this platform"
             )
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._reject_symlink_paths()
         with self.lock_path.open("a+b") as lock_handle:
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_SH)
             entries, checkpoint = self._verify_unlocked()
@@ -237,6 +250,7 @@ class TransparencyLog:
                 "atomic transparency verification requires fcntl on this platform"
             )
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._reject_symlink_paths()
         with self.lock_path.open("a+b") as lock_handle:
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_SH)
             entries = self._read_entries()
@@ -258,6 +272,13 @@ class TransparencyLog:
             if expected != receipt_model:
                 raise AttestationError("receipt Merkle path does not match log prefix")
             return True
+
+    def _reject_symlink_paths(self) -> None:
+        for path in (self.path, self.checkpoint_path, self.lock_path):
+            if path.is_symlink():
+                raise AttestationError(
+                    f"transparency state path must not be a symlink: {path}"
+                )
 
     def _verify_unlocked(
         self,
