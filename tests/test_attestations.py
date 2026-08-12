@@ -420,7 +420,11 @@ class AttestationTests(unittest.TestCase):
             log = TransparencyLog(path, log_id="fixture.log")
             log.append(envelope, bundle, public_key, policy)
             entry = json.loads(path.read_text(encoding="utf-8"))
-            path.write_text(json.dumps(entry, indent=2) + "\n", encoding="utf-8")
+            path.write_text(
+                json.dumps(entry, sort_keys=False, separators=(", ", ": "))
+                + "\n",
+                encoding="utf-8",
+            )
             with self.assertRaisesRegex(AttestationError, "canonical JSON"):
                 log.verify()
 
