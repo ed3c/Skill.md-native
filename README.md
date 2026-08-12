@@ -2,7 +2,7 @@
 
 Runtime-verified evidence, security, compatibility, and outcome ranking for Agent Skills across registries and execution domains.
 
-> **Coding/AI Agents:** read [`AGENTS.md`](./AGENTS.md) before changing code, Issues, CI, runtime adapters, evaluation logic, or documentation. The cross-domain execution contract is in [`docs/HARNESS_KERNEL.md`](./docs/HARNESS_KERNEL.md), Coding Agent trust boundaries are in [`docs/CODING_AGENT_HARNESS.md`](./docs/CODING_AGENT_HARNESS.md), and evaluator authority/Evidence Graph/replay/scorecard contracts are in [`docs/RUN_ARTIFACTS.md`](./docs/RUN_ARTIFACTS.md).
+> **Coding/AI Agents:** read [`AGENTS.md`](./AGENTS.md) before changing code, Issues, CI, runtime adapters, evaluation logic, or documentation. The cross-domain execution contract is in [`docs/HARNESS_KERNEL.md`](./docs/HARNESS_KERNEL.md), Coding Agent trust boundaries are in [`docs/CODING_AGENT_HARNESS.md`](./docs/CODING_AGENT_HARNESS.md), evaluator authority/Evidence Graph/replay/scorecard contracts are in [`docs/RUN_ARTIFACTS.md`](./docs/RUN_ARTIFACTS.md), and signed publication semantics are in [`docs/ATTESTATIONS.md`](./docs/ATTESTATIONS.md).
 
 ## Mission
 
@@ -22,6 +22,9 @@ Registry / Repository / Plugin source
   -> digest-addressed HarnessVerdict
   -> EvidenceGraph + ReplayManifest + LogicalTrace
   -> evidence-first OutcomeScorecard
+  -> canonical RunArtifactStatement + DSSE Ed25519 signature
+  -> verifier-owned identity policy
+  -> transparency-log inclusion receipt
   -> Skill x Agent x Runtime x Model compatibility matrix
   -> digest-addressed reports and ranking artifacts
 ```
@@ -110,6 +113,52 @@ failed verifier
 ```
 
 See [`docs/RUN_ARTIFACTS.md`](./docs/RUN_ARTIFACTS.md) for the complete trust model, graph relationships, replay classes, score policy, CLI, schemas, and verification vocabulary.
+
+## Signed attestations and transparency publication
+
+`skill-native-attest` binds the exact `RunArtifactBundle` to a canonical in-toto-style statement, signs the DSSE pre-authentication bytes with Ed25519, verifies the derived public-key ID and signed identity claims against verifier-owned policy, and publishes only policy-verified envelopes to a local hash-chained Merkle log.
+
+```text
+RunArtifactBundle
+  -> RunArtifactStatement
+  -> canonical DSSE payload
+  -> Ed25519 signature
+  -> AttestationTrustPolicy
+  -> AttestationVerificationReceipt
+  -> TransparencyLogEntry
+  -> checkpoint + inclusion receipt
+```
+
+The publication API re-runs bundle continuity, signature, key-ID, and policy verification. It does not trust a caller-supplied success receipt. Signed workflow references must be pinned to a 40-character Git SHA that equals the signed `commit_sha`.
+
+```bash
+skill-native-attest generate-key \
+  --private-key /tmp/signing-key.pem \
+  --public-key /tmp/signing-key.pub.pem
+
+skill-native-attest create-policy \
+  --policy-id skill-native.local \
+  --public-key /tmp/signing-key.pub.pem \
+  --output /tmp/attestation-policy.json
+
+skill-native-attest sign \
+  --bundle /tmp/run-artifacts/<digest>/run-artifact-bundle.json \
+  --identity examples/attestations/identity.json \
+  --private-key /tmp/signing-key.pem \
+  --output /tmp/run-artifact.dsse.json
+
+skill-native-attest log-append \
+  --bundle /tmp/run-artifacts/<digest>/run-artifact-bundle.json \
+  --envelope /tmp/run-artifact.dsse.json \
+  --public-key /tmp/signing-key.pub.pem \
+  --policy /tmp/attestation-policy.json \
+  --log /tmp/run-artifacts-transparency.jsonl \
+  --receipt-output /tmp/inclusion-receipt.json
+```
+
+Content addressing, cryptographic signing, policy verification, transparency publication, integration verification, and runtime verification are distinct states. Signing or publishing a failed or non-rank-eligible bundle does not change its outcome.
+
+The current log is local and its checkpoint is not independently signed or witnessed. It detects ordinary mutation, truncation, reordering, duplicate publication, and receipt mismatch, but it is not presented as a public Sigstore/Rekor replacement. See [`docs/ATTESTATIONS.md`](./docs/ATTESTATIONS.md) for the complete trust boundary and preservation requirements.
 
 ## Immutable ingestion
 
@@ -204,16 +253,19 @@ skill-native build-report matrix-input.jsonl --output report.json
 
 ## Verification
 
-`.github/workflows/unit.yml` defines Python regression, Coding Agent fixture, Run Artifact fixture, schema-drift, and Cloudflare TypeScript contract checks. `.github/workflows/integration.yml` performs a live public GitHub ingestion on pull requests and exposes explicit dispatch jobs for real OpenShell and Cloudflare account-backed validation.
+`.github/workflows/unit.yml` defines the full Python regression, Coding Agent fixture, Run Artifact fixture, attestation and transparency tampering suite, all committed-schema drift checks, deterministic CLI signing/publication flow, and Cloudflare TypeScript contract checks. `.github/workflows/integration.yml` performs live public GitHub ingestion on pull requests and exposes explicit dispatch jobs for real OpenShell and Cloudflare account-backed validation.
 
-The project distinguishes four states:
+The project distinguishes these states:
 
-- **implemented**: code, schemas, and deterministic tests exist;
-- **integration-verified**: a real external adapter/service produced persisted evidence;
-- **runtime-verified**: the pinned artifact ran in the declared isolated runtime and all required assertions passed;
-- **cryptographically attested**: a trusted signing identity covered the relevant digests.
+- **implemented:** code, schemas, and deterministic tests exist;
+- **content-addressed:** applicable object and nested continuity digests validate;
+- **cryptographically signed:** an Ed25519 signature covers the exact canonical statement;
+- **policy verified:** the derived key ID and signed identity claims match verifier-owned policy;
+- **transparency published:** the policy-verified envelope has a log inclusion receipt;
+- **integration-verified:** a real external adapter/service produced persisted evidence;
+- **runtime-verified:** the pinned artifact ran in the declared isolated runtime and all required assertions passed.
 
-A configured workflow is not a passing workflow. Jobs that fail to start because of repository/account infrastructure are recorded as blocked infrastructure, not test evidence.
+A configured workflow is not a passing workflow. A signature is not runtime evidence, a log inclusion is not task correctness, and jobs that fail to start because of repository/account infrastructure are recorded as blocked infrastructure rather than test evidence.
 
 ## License
 
