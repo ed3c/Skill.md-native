@@ -18,6 +18,19 @@ Build a cross-registry trust and runtime-validation layer for Agent Skills. The 
 [Static analyzers]
       |
       v
+[HarnessManifest + immutable RunSpec]
+      |
+      v
+[Harness compiler]
+      |
+      +--> domain adapter registry
+      +--> runtime capability/evidence negotiation
+      +--> policy and budget checks
+      |
+      v
+[Digest-addressed HarnessPlan]
+      |
+      v
 [Execution planner]
       |
       +--> OpenShell backend
@@ -38,11 +51,46 @@ Build a cross-registry trust and runtime-validation layer for Agent Skills. The 
   command / process / fs / network / tool / model / assertion traces
       |
       v
-[Evaluator]
+[Deterministic verifier + security evaluator]
+      |
+      v
+[Digest-addressed HarnessVerdict]
       |
       v
 [Evidence Ledger + Compatibility Matrix + Outcome Ranking]
 ```
+
+## Cross-domain Harness Kernel
+
+`SKILL.md` remains the human/agent instruction entrypoint. It is not the complete executable evaluation contract. A portable harness package combines:
+
+```text
+SKILL.md
++ harness.yaml
++ immutable RunSpec
++ trusted domain adapter
++ trusted runtime capability/evidence profile
++ deterministic assertions
++ EvidenceBundle
++ HarnessVerdict
+```
+
+The v0.1 manifest vocabulary recognizes Coding, Browser, Android, Desktop, SRE, Documents, Voice, Robotics, and custom domains. Recognition does not imply implementation: an unknown or unregistered domain adapter fails closed.
+
+The compiler rejects execution before provisioning when any of these conditions hold:
+
+- the Skill is not linked to immutable provenance;
+- the selected runtime is outside the manifest allowlist;
+- required runtime capabilities are unavailable;
+- requested evidence cannot be collected by the trusted adapter;
+- effective network, filesystem, or secret policy is weaker or different;
+- the RunSpec exceeds manifest budgets;
+- the verifier type is unknown;
+- replay requires snapshot/restore but the runtime does not support it.
+
+A plan includes the complete RunSpec, exact manifest and policy digests, compiled typed action, runtime capability profile, evidence requirements, verifiers, and a self-validating plan digest. A verdict preserves plan, evidence, provenance, runtime, security, and failure continuity through its own digest.
+
+The detailed extension and trust contract is in [`HARNESS_KERNEL.md`](./HARNESS_KERNEL.md).
 
 ## Trust boundaries
 
@@ -50,6 +98,7 @@ Build a cross-registry trust and runtime-validation layer for Agent Skills. The 
 
 - Registry metadata
 - Skill instructions
+- Package-supplied `harness.yaml` claims
 - Scripts and binaries bundled by skills
 - Downloaded dependencies
 - Runtime-generated code
@@ -60,12 +109,19 @@ Build a cross-registry trust and runtime-validation layer for Agent Skills. The 
 
 Keep this deliberately small:
 
+- immutable ingestion/provenance code
+- approved HarnessManifest/operator policy overlay
+- domain adapter registry
 - runtime backend controller
+- runtime capability and evidence profiles
 - sandbox policy compiler
 - evidence collector outside the sandbox
-- evaluator assertions
+- deterministic evaluator assertions
+- security evaluator
 - artifact hashing/signing code
 - provider credential injector
+
+A package-supplied manifest requests capabilities. It cannot grant itself a runtime, policy exception, secret, evidence exemption, or verifier implementation.
 
 ## Runtime backend contract
 
@@ -80,6 +136,8 @@ restore(snapshot_ref) -> sandbox_id
 destroy(sandbox_id)
 ```
 
+The current Python adapter contract exposes prepare, execute, collect, and destroy. Snapshot/restore remains an explicit capability and must not be claimed until implemented by the adapter.
+
 A backend capability descriptor records whether it supports:
 
 - kernel or VM isolation
@@ -88,11 +146,14 @@ A backend capability descriptor records whether it supports:
 - filesystem policy
 - secret injection without exposing raw credentials
 - syscall/process telemetry
+- network telemetry
 - snapshot/rollback
 - persistent filesystem
 - GPU
 - nested containers
 - deterministic image pinning
+
+Each backend also declares an evidence profile. Empty output is valid evidence only when the trusted collector records that the evidence channel was captured. Unsupported evidence is rejected at compile time rather than represented by an empty placeholder.
 
 ## OpenShell backend
 
@@ -131,6 +192,8 @@ Enroot is a compatibility/performance backend, not a primary hostile-code isolat
 - What overhead does stronger isolation add?
 
 Untrusted network access should therefore be additionally constrained outside Enroot or the test must be marked `unsafe_for_adversarial_skill=true`.
+
+The Harness Kernel intentionally has no Enroot capability/evidence profile in v0.1; compilation therefore fails closed until a truthful adapter profile is implemented.
 
 ## Inference router
 
@@ -215,6 +278,8 @@ Published scores should include confidence and sample count. A single successful
 - runtime backend recorded as a confounder
 - detect network-based benchmark answer retrieval
 - distinguish `task_success` from `policy_violation`
+- keep private evaluator logic outside the untrusted workspace
+- reject manifest-defined verifier types that the trusted kernel has not registered
 
 ## Initial implementation milestones
 
@@ -230,3 +295,9 @@ Published scores should include confidence and sample count. A single successful
 10. Cross-agent compatibility matrix
 11. Malicious-skill benchmark integration
 12. Evidence viewer/dashboard
+13. Cross-domain HarnessManifest, HarnessPlan, and HarnessVerdict contracts
+14. Coding Agent adapter
+15. Browser adapter
+16. Android/device adapter
+17. Desktop/SRE/Documents adapters
+18. Voice/robotics adapters

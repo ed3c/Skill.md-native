@@ -25,6 +25,25 @@ jobs:
         run: skill-native compile-openshell-policy examples/run.openshell.yaml > /tmp/openshell-policy.yaml
       - name: Materialize adversarial fixtures
         run: skill-native materialize-fixtures /tmp/fixtures
+      - name: Verify committed Harness schemas
+        run: |
+          skill-native export-harness-schemas /tmp/harness-schemas
+          diff -ru schemas /tmp/harness-schemas
+      - name: Validate and compile Harness fixture
+        run: |
+          skill-native validate-harness examples/harnesses/coding/harness.yaml > /tmp/harness-manifest.json
+          skill-native plan-harness \
+            examples/harnesses/coding/harness.yaml \
+            examples/harnesses/coding/run.fake.yaml > /tmp/harness-plan.json
+      - name: Run deterministic Harness fixture
+        run: |
+          skill-native run-harness-fake \
+            examples/harnesses/coding/harness.yaml \
+            examples/harnesses/coding/run.fake.yaml \
+            --evidence-dir /tmp/harness-evidence \
+            --verdict-dir /tmp/harness-verdicts > /tmp/harness-result.json
+          test "$(find /tmp/harness-evidence -type f | wc -l)" -eq 1
+          test "$(find /tmp/harness-verdicts -type f | wc -l)" -eq 1
 
   cloudflare-contracts:
     runs-on: ubuntu-latest

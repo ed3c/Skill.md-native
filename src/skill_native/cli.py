@@ -8,9 +8,17 @@ import yaml
 
 from .adversarial import materialize_all
 from .cloudflare_runtime import CloudflareHttpClient
-from .evidence import EvidenceStore, attach_run_receipts
+from .compatibility import CompatibilityKey
+from .evidence import EvidenceStore, attach_run_receipts, canonical_digest
 from .gateway import serve
 from .github_ingest import GitHubIngestor, GitHubSkillSource
+from .harness import (
+    HarnessKernel,
+    HarnessVerdictStore,
+    VerdictStatus,
+    export_harness_schemas,
+    load_harness_manifest,
+)
 from .models import EvidenceBundle, RunSpec
 from .openshell import OpenShellPolicyCompiler
 from .policy import ProviderPolicy, ReceiptLedger
@@ -18,7 +26,6 @@ from .providers import ProviderConfig, ProviderKind, ProviderRouter
 from .registries import SkillsShAdapter
 from .reporting import VerificationPolicy, build_report
 from .runtime import CloudflareRuntime, FakeRuntime, OpenShellRuntime, RuntimeAdapter
-from .compatibility import CompatibilityKey
 
 
 def load_spec(path: Path) -> RunSpec:
@@ -70,6 +77,23 @@ def main() -> None:
 
     validate = sub.add_parser("validate")
     validate.add_argument("spec", type=Path)
+
+    validate_harness = sub.add_parser("validate-harness")
+    validate_harness.add_argument("manifest", type=Path)
+
+    plan_harness = sub.add_parser("plan-harness")
+    plan_harness.add_argument("manifest", type=Path)
+    plan_harness.add_argument("spec", type=Path)
+
+    run_harness_fake = sub.add_parser("run-harness-fake")
+    run_harness_fake.add_argument("manifest", type=Path)
+    run_harness_fake.add_argument("spec", type=Path)
+    run_harness_fake.add_argument("--receipt-ledger", type=Path, default=None)
+    run_harness_fake.add_argument("--evidence-dir", type=Path, default=Path(".skill-native/evidence"))
+    run_harness_fake.add_argument("--verdict-dir", type=Path, default=Path(".skill-native/verdicts"))
+
+    export_schemas = sub.add_parser("export-harness-schemas")
+    export_schemas.add_argument("output", type=Path)
 
     compile_policy = sub.add_parser("compile-openshell-policy")
     compile_policy.add_argument("spec", type=Path)
@@ -123,6 +147,38 @@ def main() -> None:
     report.add_argument("--output", type=Path, required=True)
 
     args = parser.parse_args()
+
+    if args.command == "export-harness-schemas":
+        paths = export_harness_schemas(args.output)
+        print(json.dumps({name: str(path) for name, path in sorted(paths.items())}, indent=2))
+        return
+
+    if args.command in {"validate-harness", "plan-harness", "run-harness-fake"}:
+        manifest = load_harness_manifest(args.manifest)
+        if args.command == "validate-harness":
+            payload = manifest.model_dump(mode="json")
+            print(json.dumps({"manifest_digest": canonical_digest(payload), "manifest": payload}, indent=2))
+            return
+
+        spec = load_spec(args.spec)
+        kernel = HarnessKernel()
+        if args.command == "plan-harness":
+            print(json.dumps(kernel.compile(manifest, spec).model_dump(mode="json"), indent=2))
+            return
+
+        ledger = ReceiptLedger(args.receipt_ledger) if args.receipt_ledger else None
+        result = kernel.run(
+            manifest,
+            spec,
+            FakeRuntime(),
+            ledger=ledger,
+            evidence_store=EvidenceStore(args.evidence_dir),
+            verdict_store=HarnessVerdictStore(args.verdict_dir),
+        )
+        print(json.dumps(result.model_dump(mode="json"), indent=2))
+        if result.verdict.status is VerdictStatus.FAIL:
+            raise SystemExit(2)
+        return
 
     if args.command == "serve-gateway":
         policy = ProviderPolicy(
@@ -196,8 +252,10 @@ def main() -> None:
         print(json.dumps(run_runtime(FakeRuntime(), spec, ["skill", "run", spec.skill.entrypoint], ledger=ledger, evidence_dir=evidence_dir), indent=2))
     elif args.command in {"run-openshell", "run-cloudflare"}:
         command = list(args.argv)
-        if command and command[0] == "--": command = command[1:]
-        if not command: parser.error(f"{args.command} requires a command")
+        if command and command[0] == "--":
+            command = command[1:]
+        if not command:
+            parser.error(f"{args.command} requires a command")
         runtime: RuntimeAdapter
         if args.command == "run-openshell":
             runtime = OpenShellRuntime()

@@ -1,0 +1,83 @@
+schema_version: "1.0"
+identity:
+  id: coding.skill-smoke
+  version: "0.1.0"
+  domain: coding
+  description: Deterministic vertical slice for the cross-domain Harness Kernel.
+
+licensing:
+  code: MIT
+  models: []
+  datasets: []
+  dependencies: []
+
+environment:
+  allowed_runtimes:
+    - fake
+  required_capabilities:
+    - network_deny_by_default
+    - filesystem_policy
+    - brokered_secrets
+  network: deny-by-default
+  filesystem: ephemeral
+  secrets: brokered
+
+interfaces:
+  action_schema: urn:skill-native:action:argv:v1
+  observation_schema: urn:skill-native:observation:evidence-bundle:v1
+  protocols: []
+
+execution:
+  adapter: coding.command.v1
+  command:
+    - skill
+    - run
+    - "{entrypoint}"
+
+evidence:
+  capture:
+    - exit_code
+    - stdout
+    - stderr
+    - commands
+    - assertions
+    - runtime_metadata
+  required:
+    - exit_code
+    - stdout
+    - stderr
+    - commands
+    - assertions
+    - runtime_metadata
+
+verification:
+  security_gate: fail-on-high-or-critical
+  checks:
+    - id: process-exited-cleanly
+      kind: exit_code_zero
+    - id: runtime-completed
+      kind: assertion_true
+      assertion: runtime_completed
+    - id: fake-runtime-receipt
+      kind: stdout_contains
+      value: fake runtime execution
+    - id: stderr-empty
+      kind: stderr_empty
+
+budgets:
+  timeout_seconds: 60
+  max_model_calls: 0
+  max_output_tokens: 0
+  max_network_requests: 0
+
+replay:
+  supported: false
+  snapshot_required: false
+
+failure_taxonomy:
+  - environment_setup
+  - unsupported_capability
+  - unsupported_evidence
+  - execution_failure
+  - policy_violation
+  - verification_failure

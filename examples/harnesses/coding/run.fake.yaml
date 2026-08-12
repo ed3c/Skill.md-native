@@ -1,0 +1,36 @@
+run_id: harness-coding-smoke-001
+skill:
+  source_url: https://github.com/ed3c/Skill.md-native
+  commit_or_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  provenance_digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  entrypoint: SKILL.md
+agent:
+  harness: codex
+  version: deterministic-fixture
+model:
+  provider: local
+  model: deterministic-fixture
+  quota_class: local
+runtime:
+  backend: fake
+  version: "0.1"
+  image_digest: sha256:deterministic-fixture
+policy:
+  network: deny-by-default
+  allowed_hosts: []
+  network_rules: []
+  filesystem: ephemeral
+  secrets: brokered
+  landlock_compatibility: hard_requirement
+  provider_names: []
+  secret_env_names: []
+scenario:
+  id: coding-smoke
+  task: Verify the local Harness Kernel contract without executing untrusted code.
+  assertions:
+    - runtime_completed
+limits:
+  timeout_seconds: 60
+  max_model_calls: 0
+  max_output_tokens: 0
+  max_network_requests: 0
