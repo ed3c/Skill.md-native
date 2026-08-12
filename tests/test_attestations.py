@@ -242,33 +242,28 @@ class AttestationTests(unittest.TestCase):
         public_key = private_key.public_key()
         identity = fixture_identity()
         envelope = sign_bundle(bundle, identity, private_key)
-        verification = verify_attestation(
-            bundle,
-            envelope,
-            public_key,
-            fixture_policy(public_key, identity),
-        )
+        policy = fixture_policy(public_key, identity)
 
         with tempfile.TemporaryDirectory() as td:
             log = TransparencyLog(Path(td) / "run-artifacts.jsonl", log_id="fixture.log")
-            first = log.append(envelope, verification)
+            first = log.append(envelope, bundle, public_key, policy)
             self.assertEqual(log.verify().tree_size, 1)
             self.assertTrue(log.verify_receipt(first))
             with self.assertRaisesRegex(AttestationError, "duplicate"):
-                log.append(envelope, verification)
+                log.append(envelope, bundle, public_key, policy)
 
             second_identity = fixture_identity(suffix=":second")
             second_envelope = sign_bundle(bundle, second_identity, private_key)
-            second_verification = verify_attestation(
-                bundle,
-                second_envelope,
-                public_key,
-                build_trust_policy(
-                    policy_id="second-policy",
-                    allowed_key_ids=[key_id_for_public_key(public_key)],
-                ),
+            second_policy = build_trust_policy(
+                policy_id="second-policy",
+                allowed_key_ids=[key_id_for_public_key(public_key)],
             )
-            second = log.append(second_envelope, second_verification)
+            second = log.append(
+                second_envelope,
+                bundle,
+                public_key,
+                second_policy,
+            )
             state = log.verify()
             self.assertEqual(state.tree_size, 2)
             self.assertNotEqual(first.checkpoint.root_hash, second.checkpoint.root_hash)
@@ -282,24 +277,23 @@ class AttestationTests(unittest.TestCase):
         identity = fixture_identity()
         policy = fixture_policy(public_key, identity)
         envelope = sign_bundle(bundle, identity, private_key)
-        verification = verify_attestation(bundle, envelope, public_key, policy)
 
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "run-artifacts.jsonl"
             log = TransparencyLog(path, log_id="fixture.log")
-            first = log.append(envelope, verification)
+            first = log.append(envelope, bundle, public_key, policy)
             second_identity = fixture_identity(suffix=":second")
             second_envelope = sign_bundle(bundle, second_identity, private_key)
-            second_verification = verify_attestation(
-                bundle,
-                second_envelope,
-                public_key,
-                build_trust_policy(
-                    policy_id="second-policy",
-                    allowed_key_ids=[key_id_for_public_key(public_key)],
-                ),
+            second_policy = build_trust_policy(
+                policy_id="second-policy",
+                allowed_key_ids=[key_id_for_public_key(public_key)],
             )
-            log.append(second_envelope, second_verification)
+            log.append(
+                second_envelope,
+                bundle,
+                public_key,
+                second_policy,
+            )
             original_log = path.read_text(encoding="utf-8")
             original_checkpoint = log.checkpoint_path.read_text(encoding="utf-8")
             lines = original_log.splitlines(keepends=True)
@@ -328,6 +322,46 @@ class AttestationTests(unittest.TestCase):
             raw_receipt["entry_digest"] = "f" * 64
             with self.assertRaises(ValidationError):
                 TransparencyInclusionReceipt.model_validate(raw_receipt)
+
+    def test_noncanonical_statement_and_mutable_workflow_ref_are_rejected(self):
+        with self.assertRaises(ValidationError):
+            AttestationIdentity(
+                issuer="https://token.actions.githubusercontent.com",
+                subject="repo:ed3c/Skill.md-native:ref:refs/heads/main",
+                repository="ed3c/Skill.md-native",
+                workflow_ref=(
+                    "ed3c/Skill.md-native/.github/workflows/unit.yml@refs/heads/main"
+                ),
+                commit_sha="a" * 40,
+            )
+
+        bundle = make_bundle()
+        envelope = sign_bundle(bundle, fixture_identity(), fixture_private_key())
+        raw = envelope.model_dump(mode="json", by_alias=True)
+        payload = json.loads(base64.b64decode(raw["payload"]).decode("utf-8"))
+        raw["payload"] = base64.b64encode(
+            json.dumps(payload, sort_keys=False, indent=2).encode("utf-8")
+        ).decode("ascii")
+        with self.assertRaises(ValidationError):
+            DSSEEnvelope.model_validate(raw)
+
+    def test_transparency_append_reverifies_signature_and_policy(self):
+        bundle = make_bundle()
+        private_key = fixture_private_key()
+        public_key = private_key.public_key()
+        identity = fixture_identity()
+        envelope = sign_bundle(bundle, identity, private_key)
+        wrong_policy = build_trust_policy(
+            policy_id="wrong-key",
+            allowed_key_ids=[
+                key_id_for_public_key(Ed25519PrivateKey.generate().public_key())
+            ],
+        )
+        with tempfile.TemporaryDirectory() as td:
+            log = TransparencyLog(Path(td) / "run-artifacts.jsonl", log_id="fixture.log")
+            with self.assertRaisesRegex(AttestationError, "not authorized"):
+                log.append(envelope, bundle, public_key, wrong_policy)
+            self.assertFalse(log.path.exists())
 
     def test_schema_export_is_deterministic(self):
         with tempfile.TemporaryDirectory() as td:
