@@ -1,3 +1,12 @@
+from .browser_adapter import BrowserPlaywrightAdapter
+from .browser_contract import (
+    BrowserArtifact,
+    BrowserContract,
+    BrowserContractError,
+    BrowserEvent,
+    BrowserReceipt,
+    BrowserRunnerConfig,
+)
 from .coding_contract import (
     CodingAgentContract,
     CodingAgentDriver,
@@ -26,6 +35,13 @@ from .harness_contract import (
 from .harness_kernel import HarnessKernel, HarnessVerdictStore
 
 __all__ = [
+    "BrowserArtifact",
+    "BrowserContract",
+    "BrowserContractError",
+    "BrowserEvent",
+    "BrowserPlaywrightAdapter",
+    "BrowserReceipt",
+    "BrowserRunnerConfig",
     "CodingAgentAdapter",
     "CodingAgentContract",
     "CodingAgentDriver",
