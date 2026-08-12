@@ -15,12 +15,12 @@ from .run_artifact_common import (
     build_evaluator_authority,
     canonical_digest,
 )
+from .run_artifact_bundle import RunArtifactBundle
 from .run_artifact_contract import (
     LogicalTrace,
     OutcomeScorecard,
     ReplayClass,
     ReplayManifest,
-    RunArtifactBundle,
     RunArtifactStore,
     ScorecardTier,
     export_run_artifact_schemas,
