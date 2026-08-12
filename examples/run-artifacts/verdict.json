@@ -1,0 +1,40 @@
+{
+  "checks": [
+    {
+      "details": {},
+      "evidence_ids": [],
+      "id": "provenance-continuity",
+      "kind": "provenance",
+      "message": "ok",
+      "passed": true
+    },
+    {
+      "details": {},
+      "evidence_ids": [],
+      "id": "runtime-continuity",
+      "kind": "runtime",
+      "message": "ok",
+      "passed": true
+    },
+    {
+      "details": {},
+      "evidence_ids": [],
+      "id": "security-gate",
+      "kind": "security_gate",
+      "message": "ok",
+      "passed": true
+    }
+  ],
+  "evidence_digest": "f3d92def7c3e1ed4fea8f77da13aa5c1287950952e0cee67b7bb790a8659ef27",
+  "failed_check_ids": [],
+  "manifest_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "plan_digest": "4b2286034f6395ac0cd066a6994b2cd69a65b945669718a2fdcbc9bf6c608c15",
+  "provenance_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "run_id": "run-artifacts-fixture",
+  "runtime_backend": "fake",
+  "schema_version": "1.0",
+  "security_findings": [],
+  "security_gate": "pass",
+  "status": "pass",
+  "verdict_digest": "2829465fd7f8ceb0f59d013e9dc71c191ed47f1bc862fb5a9c475aa9404d9e8e"
+}
