@@ -169,6 +169,14 @@ class HarnessKernelTests(unittest.TestCase):
         with self.assertRaises(HarnessContractError):
             HarnessKernel().compile(HarnessManifest.model_validate(raw), make_spec())
 
+    def test_explicit_empty_evidence_profile_does_not_fall_back(self):
+        with self.assertRaises(HarnessContractError):
+            HarnessKernel().compile(
+                make_manifest(),
+                make_spec(),
+                available_evidence=frozenset(),
+            )
+
     def test_missing_mandatory_evidence_fails_verdict(self):
         kernel = HarnessKernel()
         manifest = make_manifest()
