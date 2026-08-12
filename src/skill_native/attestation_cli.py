@@ -169,7 +169,9 @@ def main() -> None:
         if args.command == "log-append":
             receipt = TransparencyLog(args.log, log_id=args.log_id).append(
                 envelope,
-                verification,
+                bundle,
+                load_public_key(args.public_key),
+                policy_model,
             )
             _write_json(args.receipt_output, receipt.model_dump(mode="json"))
             print(args.receipt_output)
