@@ -9,12 +9,14 @@ dependencies = [
   "pydantic>=2.8,<3",
   "httpx>=0.27,<1",
   "PyYAML>=6.0,<7",
+  "cryptography>=46,<50",
 ]
 
 [project.scripts]
 skill-native = "skill_native.cli:main"
 skill-native-coding-runner = "skill_native.coding_agent:main"
 skill-native-run-artifacts = "skill_native.run_artifacts:main"
+skill-native-attest = "skill_native.attestation_cli:main"
 
 [build-system]
 requires = ["hatchling>=1.25"]
