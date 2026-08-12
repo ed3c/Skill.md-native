@@ -14,6 +14,7 @@ dependencies = [
 [project.scripts]
 skill-native = "skill_native.cli:main"
 skill-native-coding-runner = "skill_native.coding_agent:main"
+skill-native-run-artifacts = "skill_native.run_artifacts:main"
 
 [build-system]
 requires = ["hatchling>=1.25"]
