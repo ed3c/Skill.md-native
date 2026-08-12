@@ -12,7 +12,7 @@ from .run_artifact_common import (
     _validate_content_digest,
     canonical_digest,
 )
-from .run_artifact_contract import RunArtifactBundle
+from .run_artifact_bundle import RunArtifactBundle
 from .run_artifact_derived import _DerivedBuilderMixin, _severe_findings
 from .run_artifact_graph import _GraphBuilderMixin
 
