@@ -28,7 +28,13 @@ jobs:
             tests.test_runtime_harness_controllers \
             -v
       - name: Verify deterministic Run Artifact Bundle
-        run: python -m unittest tests.test_run_artifacts -v
+        run: |
+          python -m unittest \
+            tests.test_run_artifacts \
+            tests.test_run_artifact_evidence_links \
+            -v
+      - name: Verify deterministic attestations and transparency log
+        run: python -m unittest tests.test_attestations -v
       - name: Compile smoke policy
         run: skill-native compile-openshell-policy examples/run.openshell.yaml > /tmp/openshell-policy.yaml
       - name: Materialize adversarial fixtures
@@ -37,6 +43,7 @@ jobs:
         run: |
           skill-native export-harness-schemas /tmp/all-schemas
           skill-native-run-artifacts export-schemas /tmp/all-schemas
+          skill-native-attest export-schemas /tmp/all-schemas
           diff -ru schemas /tmp/all-schemas
       - name: Validate and compile Harness fixtures
         run: |
@@ -67,6 +74,50 @@ jobs:
             --verdict examples/run-artifacts/verdict.json \
             --output /tmp/run-artifacts > /tmp/run-artifacts-result.json
           test "$(find /tmp/run-artifacts -name '*.json' -type f | wc -l)" -eq 6
+      - name: Sign, verify, and transparency-publish deterministic fixture
+        run: |
+          BUNDLE_PATH="$(python -c 'import json; print(json.load(open("/tmp/run-artifacts-result.json"))["bundle_path"])')"
+          skill-native-attest generate-key \
+            --private-key /tmp/signing-key.pem \
+            --public-key /tmp/signing-key.pub.pem > /tmp/key-result.json
+          skill-native-attest create-policy \
+            --policy-id skill-native.fixture \
+            --public-key /tmp/signing-key.pub.pem \
+            --expected-issuer https://token.actions.githubusercontent.com \
+            --expected-subject repo:ed3c/Skill.md-native:ref:refs/heads/main \
+            --expected-repository ed3c/Skill.md-native \
+            --expected-workflow-ref ed3c/Skill.md-native/.github/workflows/unit.yml@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            --expected-commit-sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            --require-rank-eligible \
+            --output /tmp/attestation-policy.json
+          skill-native-attest sign \
+            --bundle "$BUNDLE_PATH" \
+            --identity examples/attestations/identity.json \
+            --private-key /tmp/signing-key.pem \
+            --output /tmp/run-artifact.dsse.json
+          skill-native-attest verify \
+            --bundle "$BUNDLE_PATH" \
+            --envelope /tmp/run-artifact.dsse.json \
+            --public-key /tmp/signing-key.pub.pem \
+            --policy /tmp/attestation-policy.json \
+            --output /tmp/attestation-verification.json
+          skill-native-attest log-append \
+            --bundle "$BUNDLE_PATH" \
+            --envelope /tmp/run-artifact.dsse.json \
+            --public-key /tmp/signing-key.pub.pem \
+            --policy /tmp/attestation-policy.json \
+            --log /tmp/run-artifacts-transparency.jsonl \
+            --log-id skill-native.fixture \
+            --receipt-output /tmp/inclusion-receipt.json
+          skill-native-attest log-verify \
+            --log /tmp/run-artifacts-transparency.jsonl \
+            --log-id skill-native.fixture > /tmp/log-verification.json
+          skill-native-attest receipt-verify \
+            --log /tmp/run-artifacts-transparency.jsonl \
+            --log-id skill-native.fixture \
+            --receipt /tmp/inclusion-receipt.json > /tmp/receipt-verification.json
+          test -s /tmp/attestation-verification.json
+          test -s /tmp/inclusion-receipt.json
 
   cloudflare-contracts:
     runs-on: ubuntu-latest

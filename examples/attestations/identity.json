@@ -1,0 +1,8 @@
+{
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:ed3c/Skill.md-native:ref:refs/heads/main",
+  "repository": "ed3c/Skill.md-native",
+  "workflow_ref": "ed3c/Skill.md-native/.github/workflows/unit.yml@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "environment": "deterministic-fixture"
+}
