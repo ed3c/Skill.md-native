@@ -70,6 +70,28 @@ class _StreamAccumulator:
         return self.total_bytes > self.max_capture_bytes
 
 
+@dataclass
+class _InputWriter:
+    data: bytes
+    error: str | None = None
+
+    def write(self, handle: BinaryIO) -> None:
+        try:
+            handle.write(self.data)
+            handle.flush()
+        except BrokenPipeError:
+            # A child that exits before consuming the full task is handled by its
+            # process result; a closed pipe is not itself a harness failure.
+            pass
+        except Exception as exc:  # noqa: BLE001 - normalized into process evidence
+            self.error = f"{type(exc).__name__}: {exc}"
+        finally:
+            try:
+                handle.close()
+            except OSError:
+                pass
+
+
 @dataclass(frozen=True)
 class _CapturedProcess:
     argv: list[str]
@@ -328,8 +350,10 @@ def _run_process(
     process_tree_terminated = True
     stdout_capture = _StreamAccumulator(max_capture_bytes=max_capture_bytes)
     stderr_capture = _StreamAccumulator(max_capture_bytes=max_capture_bytes)
+    input_writer = _InputWriter(input_text.encode("utf-8")) if input_text is not None else None
     process: subprocess.Popen[bytes] | None = None
-    threads: list[threading.Thread] = []
+    output_threads: list[threading.Thread] = []
+    input_thread: threading.Thread | None = None
 
     try:
         process = subprocess.Popen(
@@ -344,7 +368,7 @@ def _run_process(
         )
         assert process.stdout is not None
         assert process.stderr is not None
-        threads = [
+        output_threads = [
             threading.Thread(
                 target=stdout_capture.consume,
                 args=(process.stdout,),
@@ -358,18 +382,21 @@ def _run_process(
                 daemon=True,
             ),
         ]
-        for thread in threads:
+        for thread in output_threads:
             thread.start()
 
-        if input_text is not None and process.stdin is not None:
-            try:
-                process.stdin.write(input_text.encode("utf-8"))
-                process.stdin.flush()
-            except BrokenPipeError:
-                pass
-            finally:
-                process.stdin.close()
+        if input_writer is not None and process.stdin is not None:
+            input_thread = threading.Thread(
+                target=input_writer.write,
+                args=(process.stdin,),
+                name="coding-runner-stdin",
+                daemon=True,
+            )
+            input_thread.start()
 
+        # Start the timeout immediately after process launch. The task writer runs
+        # concurrently, so an agent that never reads stdin cannot block the
+        # trusted wrapper before timeout enforcement begins.
         try:
             exit_code = int(process.wait(timeout=timeout_seconds))
         except subprocess.TimeoutExpired:
@@ -389,18 +416,27 @@ def _run_process(
         stderr_capture.captured.extend(message[:max_capture_bytes])
         exit_code = 127
     finally:
-        for thread in threads:
+        if input_thread is not None:
+            input_thread.join(timeout=5)
+            if input_thread.is_alive():
+                process_tree_terminated = False
+        for thread in output_threads:
             thread.join(timeout=5)
-        if any(thread.is_alive() for thread in threads):
+        if any(thread.is_alive() for thread in output_threads):
             process_tree_terminated = False
         if process is not None:
-            for handle in (process.stdout, process.stderr):
+            for handle in (process.stdin, process.stdout, process.stderr):
                 if handle is not None:
-                    handle.close()
+                    try:
+                        handle.close()
+                    except OSError:
+                        pass
 
     stream_errors = [
         error for error in (stdout_capture.error, stderr_capture.error) if error is not None
     ]
+    if input_writer is not None and input_writer.error is not None:
+        stream_errors.append(input_writer.error)
     if stream_errors:
         process_tree_terminated = False
         encoded = ("; ".join(stream_errors)).encode("utf-8", errors="replace")
