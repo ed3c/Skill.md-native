@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,6 +58,11 @@ class TransparencyLogEntry(_StrictModel):
             raise ValueError("non-first transparency entry requires a previous digest")
         if self.key_ids != sorted(set(self.key_ids)):
             raise ValueError("transparency entry key IDs must be sorted and unique")
+        for key_id in self.key_ids:
+            if len(key_id) != 64 or any(
+                char not in "0123456789abcdef" for char in key_id
+            ):
+                raise ValueError("transparency entry key IDs must be SHA-256 digests")
         expected = canonical_digest(
             self.model_dump(mode="json", exclude={"entry_digest"})
         )
@@ -179,7 +185,11 @@ class TransparencyLog:
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._reject_symlink_paths()
-        with self.lock_path.open("a+b") as lock_handle:
+        with _open_regular_file(
+            self.lock_path,
+            os.O_RDWR | os.O_CREAT,
+            file_mode="r+b",
+        ) as lock_handle:
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
             entries, _ = self._verify_unlocked(allow_missing_empty_checkpoint=True)
             if any(entry.envelope_digest == envelope_hash for entry in entries):
@@ -205,7 +215,11 @@ class TransparencyLog:
                 }
             )
             encoded = _canonical_line(entry)
-            with self.path.open("ab") as log_handle:
+            with _open_regular_file(
+                self.path,
+                os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+                file_mode="ab",
+            ) as log_handle:
                 log_handle.write(encoded)
                 log_handle.flush()
                 os.fsync(log_handle.fileno())
@@ -223,7 +237,11 @@ class TransparencyLog:
             )
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._reject_symlink_paths()
-        with self.lock_path.open("a+b") as lock_handle:
+        with _open_regular_file(
+            self.lock_path,
+            os.O_RDWR | os.O_CREAT,
+            file_mode="r+b",
+        ) as lock_handle:
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_SH)
             entries, checkpoint = self._verify_unlocked()
             return TransparencyLogVerification(
@@ -251,7 +269,11 @@ class TransparencyLog:
             )
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._reject_symlink_paths()
-        with self.lock_path.open("a+b") as lock_handle:
+        with _open_regular_file(
+            self.lock_path,
+            os.O_RDWR | os.O_CREAT,
+            file_mode="r+b",
+        ) as lock_handle:
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_SH)
             entries = self._read_entries()
             if receipt_model.checkpoint.tree_size > len(entries):
@@ -293,7 +315,13 @@ class TransparencyLog:
                 raise AttestationError("transparency checkpoint is missing")
             return entries, expected
         try:
-            raw = json.loads(self.checkpoint_path.read_text(encoding="utf-8"))
+            with _open_regular_file(
+                self.checkpoint_path,
+                os.O_RDONLY,
+                file_mode="r",
+                encoding="utf-8",
+            ) as checkpoint_handle:
+                raw = json.load(checkpoint_handle)
             observed = TransparencyCheckpoint.model_validate(raw)
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             raise AttestationError("transparency checkpoint is invalid") from exc
@@ -308,7 +336,12 @@ class TransparencyLog:
             return []
         entries: list[TransparencyLogEntry] = []
         try:
-            with self.path.open("r", encoding="utf-8") as handle:
+            with _open_regular_file(
+                self.path,
+                os.O_RDONLY,
+                file_mode="r",
+                encoding="utf-8",
+            ) as handle:
                 for line_number, line in enumerate(handle, start=1):
                     if not line.endswith("\n"):
                         raise AttestationError(
@@ -319,12 +352,42 @@ class TransparencyLog:
                             f"transparency line {line_number} is empty"
                         )
                     raw = json.loads(line)
-                    entries.append(TransparencyLogEntry.model_validate(raw))
+                    entry = TransparencyLogEntry.model_validate(raw)
+                    if line.encode("utf-8") != _canonical_line(entry):
+                        raise AttestationError(
+                            f"transparency line {line_number} is not canonical JSON"
+                        )
+                    entries.append(entry)
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             if isinstance(exc, AttestationError):
                 raise
             raise AttestationError("transparency log contains an invalid entry") from exc
         return entries
+
+
+def _open_regular_file(
+    path: Path,
+    flags: int,
+    *,
+    file_mode: str,
+    encoding: str | None = None,
+):
+    effective_flags = flags
+    if hasattr(os, "O_NOFOLLOW"):
+        effective_flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, effective_flags, 0o600)
+    except OSError as exc:
+        raise AttestationError(f"cannot open transparency state file: {path}") from exc
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise AttestationError(
+                f"transparency state must be a regular file: {path}"
+            )
+        return os.fdopen(descriptor, file_mode, encoding=encoding)
+    except Exception:
+        os.close(descriptor)
+        raise
 
 
 def _validate_entry_chain(log_id: str, entries: list[TransparencyLogEntry]) -> None:
