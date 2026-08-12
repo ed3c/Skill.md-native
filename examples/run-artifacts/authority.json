@@ -1,0 +1,11 @@
+{
+  "authority_digest": "f4110a9e2de4b89c090b3012a95243a12ad09948068a5f6e6aea2c042d311a41",
+  "authority_id": "skill-native.fixture-evaluator",
+  "commit_or_digest": "2222222222222222222222222222222222222222",
+  "evaluator_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+  "kind": "repository",
+  "manifest_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "schema_version": "1.0",
+  "source_url": "https://github.com/ed3c/Skill.md-native",
+  "trust_basis": "repository-pinned"
+}
