@@ -1,0 +1,29 @@
+run_id: coding-agent-fixture
+skill:
+  source_url: https://example.invalid/skill-native/coding-agent-fixture
+  commit_or_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  entrypoint: SKILL.md
+  provenance_digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+agent:
+  harness: deterministic-fixture
+  version: 1.0.0
+model:
+  provider: local
+  model: no-model-fixture
+  quota_class: local
+runtime:
+  backend: fake
+  version: "1"
+  image_digest: sha256:deterministic-fixture
+policy:
+  network: deny-by-default
+  filesystem: ephemeral
+  secrets: brokered
+scenario:
+  id: write-target
+  task: Write the exact text "done" followed by a newline to target.txt.
+limits:
+  timeout_seconds: 60
+  max_model_calls: 0
+  max_output_tokens: 0
+  max_network_requests: 0

@@ -1,0 +1,92 @@
+schema_version: "1.0"
+identity:
+  id: coding.agent-fixture
+  version: 0.1.0
+  domain: coding
+  description: Deterministic Coding Agent Harness contract fixture
+licensing:
+  code: MIT
+environment:
+  allowed_runtimes:
+    - fake
+    - openshell
+  required_capabilities:
+    - network_deny_by_default
+    - filesystem_policy
+    - brokered_secrets
+    - stdin_stream
+  network: deny-by-default
+  filesystem: ephemeral
+  secrets: brokered
+interfaces:
+  action_schema: urn:skill-native:action:coding-agent:v1
+  observation_schema: urn:skill-native:observation:coding-receipt:v1
+execution:
+  adapter: coding.agent.v1
+  command:
+    - python3
+    - fixture_agent.py
+coding:
+  driver: generic
+  driver_version: 1.0.0
+  output_format: jsonl
+  require_structured_events: true
+  workspace: .
+  version_command:
+    - python3
+    - fixture_agent.py
+    - --version
+  test_commands:
+    - - python3
+      - -c
+      - "from pathlib import Path; assert Path('target.txt').read_text(encoding='utf-8') == 'done\\n'"
+  allowed_change_globs:
+    - target.txt
+  max_changed_files: 1
+  max_changed_bytes: 1024
+  max_task_bytes: 4096
+  max_capture_bytes: 65536
+  max_events: 16
+  capture_agent_output_excerpts: false
+evidence:
+  capture:
+    - exit_code
+    - stdout
+    - stderr
+    - commands
+    - assertions
+    - runtime_metadata
+    - coding_receipt
+    - agent_events
+    - workspace_diff
+    - test_results
+  required:
+    - exit_code
+    - stdout
+    - stderr
+    - commands
+    - assertions
+    - runtime_metadata
+    - coding_receipt
+    - agent_events
+    - workspace_diff
+    - test_results
+verification:
+  security_gate: fail-on-high-or-critical
+  checks:
+    - id: trusted-wrapper-exited-cleanly
+      kind: exit_code_zero
+budgets:
+  timeout_seconds: 60
+  max_model_calls: 0
+  max_output_tokens: 0
+  max_network_requests: 0
+replay:
+  supported: false
+  snapshot_required: false
+failure_taxonomy:
+  - agent_failure
+  - structured_event_failure
+  - test_failure
+  - workspace_policy_violation
+  - receipt_validation_failure

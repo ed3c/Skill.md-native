@@ -8,13 +8,35 @@ from typing import Annotated, Any, Literal, Union
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .coding_contract import CodingAgentContract, CodingAgentReceipt
 from .evidence import canonical_digest
 from .models import EvidenceBundle, Limits, RunSpec, RuntimeBackend
 
 
 _DIGEST_PATTERN = r"^[0-9a-f]{64}$"
 _RESERVED_CHECK_IDS = frozenset(
-    {"provenance-continuity", "runtime-continuity", "security-gate"}
+    {
+        "provenance-continuity",
+        "runtime-continuity",
+        "command-continuity",
+        "input-continuity",
+        "security-gate",
+    }
+)
+_RESERVED_CHECK_PREFIXES = ("evidence:", "domain:")
+_CODING_AGENT_EVIDENCE = frozenset(
+    {
+        "exit_code",
+        "stdout",
+        "stderr",
+        "commands",
+        "assertions",
+        "runtime_metadata",
+        "coding_receipt",
+        "agent_events",
+        "workspace_diff",
+        "test_results",
+    }
 )
 
 
@@ -45,6 +67,7 @@ class RuntimeCapability(str, Enum):
     SNAPSHOT_RESTORE = "snapshot_restore"
     PERSISTENT_FILESYSTEM = "persistent_filesystem"
     GPU = "gpu"
+    STDIN_STREAM = "stdin_stream"
 
 
 class EvidenceKind(str, Enum):
@@ -62,6 +85,10 @@ class EvidenceKind(str, Enum):
     RUNTIME_METADATA = "runtime_metadata"
     POLICY = "policy"
     OCSF_EVENTS = "ocsf_events"
+    CODING_RECEIPT = "coding_receipt"
+    AGENT_EVENTS = "agent_events"
+    WORKSPACE_DIFF = "workspace_diff"
+    TEST_RESULTS = "test_results"
 
 
 class VerdictStatus(str, Enum):
@@ -209,7 +236,8 @@ class VerificationContract(_StrictModel):
         reserved = [
             check_id
             for check_id in ids
-            if check_id in _RESERVED_CHECK_IDS or check_id.startswith("evidence:")
+            if check_id in _RESERVED_CHECK_IDS
+            or any(check_id.startswith(prefix) for prefix in _RESERVED_CHECK_PREFIXES)
         ]
         if reserved:
             raise ValueError(
@@ -244,6 +272,7 @@ class HarnessManifest(_StrictModel):
     environment: EnvironmentContract
     interfaces: InterfaceContract = Field(default_factory=InterfaceContract)
     execution: ExecutionContract
+    coding: CodingAgentContract | None = None
     evidence: EvidenceContract
     verification: VerificationContract
     budgets: BudgetContract = Field(default_factory=BudgetContract)
@@ -252,10 +281,25 @@ class HarnessManifest(_StrictModel):
 
     @model_validator(mode="after")
     def validate_cross_field_contract(self) -> "HarnessManifest":
-        required = set(self.evidence.required)
+        if self.execution.adapter == "coding.agent.v1":
+            if self.identity.domain is not HarnessDomain.CODING:
+                raise ValueError("coding.agent.v1 requires identity.domain=coding")
+            if self.coding is None:
+                raise ValueError("coding.agent.v1 requires a coding contract")
+            required = {kind.value for kind in self.evidence.required}
+            missing = sorted(_CODING_AGENT_EVIDENCE - required)
+            if missing:
+                raise ValueError(
+                    "coding.agent.v1 requires mandatory coding evidence: "
+                    + ", ".join(missing)
+                )
+        elif self.coding is not None:
+            raise ValueError("coding contract is only valid with execution.adapter=coding.agent.v1")
+
+        required_evidence = set(self.evidence.required)
         for check in self.verification.checks:
             dependency = _verifier_evidence(check)
-            if dependency not in required:
+            if dependency not in required_evidence:
                 raise ValueError(
                     f"verifier {check.id!r} depends on {dependency.value!r}, "
                     "which must be mandatory evidence"
@@ -280,6 +324,7 @@ class HarnessPlan(_StrictModel):
     runtime_capabilities: dict[str, bool]
     run_spec: RunSpec
     command: list[str]
+    stdin_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
     required_evidence: list[EvidenceKind]
     checks: list[VerifierSpec]
     policy_digest: str = Field(pattern=_DIGEST_PATTERN)
@@ -363,6 +408,7 @@ def export_harness_schemas(output: Path) -> dict[str, Path]:
         "harness.schema.json": HarnessManifest.model_json_schema(),
         "harness-plan.schema.json": HarnessPlan.model_json_schema(),
         "harness-verdict.schema.json": HarnessVerdict.model_json_schema(),
+        "coding-agent-receipt.schema.json": CodingAgentReceipt.model_json_schema(),
     }
     result: dict[str, Path] = {}
     for name, schema in schemas.items():
@@ -373,4 +419,3 @@ def export_harness_schemas(output: Path) -> dict[str, Path]:
         )
         result[name] = path
     return result
-

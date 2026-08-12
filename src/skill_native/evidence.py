@@ -31,28 +31,27 @@ def index_evidence(bundle: EvidenceBundle) -> dict[str, dict[str, Any]]:
         ("network", bundle.network),
         ("finding", bundle.findings),
         ("ocsf", bundle.ocsf_events),
+        ("agent_event", bundle.agent_events),
+        ("test_result", bundle.test_results),
     ]
     for kind, values in groups:
         for value in values:
             obj = evidence_object(kind, value)
             objects[obj["evidence_id"]] = obj
-    if bundle.filesystem_before:
-        obj = evidence_object("filesystem_before", bundle.filesystem_before)
-        objects[obj["evidence_id"]] = obj
-    if bundle.filesystem_after:
-        obj = evidence_object("filesystem_after", bundle.filesystem_after)
-        objects[obj["evidence_id"]] = obj
+    for kind, value in (
+        ("filesystem_before", bundle.filesystem_before),
+        ("filesystem_after", bundle.filesystem_after),
+        ("coding_receipt", bundle.coding_receipt),
+        ("workspace_diff", bundle.workspace_diff),
+    ):
+        if value:
+            obj = evidence_object(kind, value)
+            objects[obj["evidence_id"]] = obj
     return objects
 
 
 def captured_evidence(bundle: EvidenceBundle) -> frozenset[str]:
-    """Return evidence kinds explicitly attested as collected by the trusted adapter.
-
-    Empty values such as a clean ``stderr`` or an empty network event stream are still
-    valid evidence when the adapter records that the collector ran. The attestation is
-    nested in runtime metadata so older EvidenceBundle payloads remain schema- and
-    digest-compatible when loaded by newer code.
-    """
+    """Return evidence kinds explicitly attested as collected by a trusted adapter."""
 
     contract = bundle.runtime_metadata.get(_EVIDENCE_CONTRACT_KEY, {})
     values = contract.get("captured", []) if isinstance(contract, dict) else []

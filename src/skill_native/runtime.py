@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import hashlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
-from .cloudflare_runtime import CloudflareRuntimeController, CloudflareSandboxClient
+from .cloudflare_runtime import CloudflareSandboxClient
 from .evidence import mark_evidence_captured
 from .models import EvidenceBundle, RunSpec, RuntimeBackend
 from .openshell import OpenShellController
+from .runtime_harness_controllers import (
+    CloudflareHarnessController,
+    OpenShellHarnessController,
+)
 
 
 @dataclass(frozen=True)
@@ -22,6 +27,7 @@ class RuntimeCapabilities:
     persistent_filesystem: bool
     gpu: bool
     network_telemetry: bool = False
+    stdin_stream: bool = False
 
 
 class RuntimeAdapter(ABC):
@@ -33,7 +39,13 @@ class RuntimeAdapter(ABC):
     def prepare(self, spec: RunSpec) -> str: ...
 
     @abstractmethod
-    def execute(self, sandbox_id: str, command: list[str]) -> str: ...
+    def execute(
+        self,
+        sandbox_id: str,
+        command: list[str],
+        *,
+        stdin: str | None = None,
+    ) -> str: ...
 
     @abstractmethod
     def collect(self, run_id: str, execution_id: str) -> EvidenceBundle: ...
@@ -58,6 +70,7 @@ class FakeRuntime(RuntimeAdapter):
         persistent_filesystem=False,
         gpu=False,
         network_telemetry=False,
+        stdin_stream=True,
     )
 
     def __init__(self) -> None:
@@ -68,10 +81,26 @@ class FakeRuntime(RuntimeAdapter):
         self._runs[sandbox_id] = {"spec": spec, "commands": []}
         return sandbox_id
 
-    def execute(self, sandbox_id: str, command: list[str]) -> str:
+    def execute(
+        self,
+        sandbox_id: str,
+        command: list[str],
+        *,
+        stdin: str | None = None,
+    ) -> str:
         execution_id = f"{sandbox_id}:exec:{len(self._runs[sandbox_id]['commands'])}"
         self._runs[sandbox_id]["commands"].append(
-            {"execution_id": execution_id, "argv": command, "exit_code": 0}
+            {
+                "execution_id": execution_id,
+                "argv": command,
+                "requested_argv": command,
+                "stdin_digest": (
+                    hashlib.sha256(stdin.encode("utf-8")).hexdigest()
+                    if stdin is not None
+                    else None
+                ),
+                "exit_code": 0,
+            }
         )
         return execution_id
 
@@ -116,16 +145,30 @@ class OpenShellRuntime(RuntimeAdapter):
         persistent_filesystem=True,
         gpu=True,
         network_telemetry=True,
+        stdin_stream=True,
     )
 
     def __init__(self, controller: OpenShellController | None = None) -> None:
-        self.controller = controller or OpenShellController()
+        self.controller = controller or OpenShellHarnessController()
 
     def prepare(self, spec: RunSpec) -> str:
         return self.controller.prepare(spec)
 
-    def execute(self, sandbox_id: str, command: list[str]) -> str:
-        return self.controller.execute(sandbox_id, command)
+    def execute(
+        self,
+        sandbox_id: str,
+        command: list[str],
+        *,
+        stdin: str | None = None,
+    ) -> str:
+        if stdin is None:
+            return self.controller.execute(sandbox_id, command)
+        try:
+            return self.controller.execute(sandbox_id, command, stdin=stdin)
+        except TypeError as exc:
+            raise ValueError(
+                "configured OpenShell controller does not support stdin streaming"
+            ) from exc
 
     def collect(self, run_id: str, execution_id: str) -> EvidenceBundle:
         return mark_evidence_captured(
@@ -155,15 +198,24 @@ class CloudflareRuntime(RuntimeAdapter):
         persistent_filesystem=True,
         gpu=False,
         network_telemetry=True,
+        stdin_stream=False,
     )
 
     def __init__(self, client: CloudflareSandboxClient) -> None:
-        self.controller = CloudflareRuntimeController(client)
+        self.controller = CloudflareHarnessController(client)
 
     def prepare(self, spec: RunSpec) -> str:
         return self.controller.prepare(spec)
 
-    def execute(self, sandbox_id: str, command: list[str]) -> str:
+    def execute(
+        self,
+        sandbox_id: str,
+        command: list[str],
+        *,
+        stdin: str | None = None,
+    ) -> str:
+        if stdin is not None:
+            raise ValueError("Cloudflare runtime bridge does not support stdin streaming")
         return self.controller.execute(sandbox_id, command)
 
     def collect(self, run_id: str, execution_id: str) -> EvidenceBundle:

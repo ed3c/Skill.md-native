@@ -1,4 +1,15 @@
-from .harness_adapters import CodingCommandAdapter, DomainAdapter, DomainAdapterRegistry
+from .coding_contract import (
+    CodingAgentContract,
+    CodingAgentDriver,
+    CodingAgentReceipt,
+    CodingOutputFormat,
+)
+from .harness_adapters import (
+    CodingAgentAdapter,
+    CodingCommandAdapter,
+    DomainAdapter,
+    DomainAdapterRegistry,
+)
 from .harness_contract import (
     EvidenceKind,
     HarnessContractError,
@@ -15,7 +26,12 @@ from .harness_contract import (
 from .harness_kernel import HarnessKernel, HarnessVerdictStore
 
 __all__ = [
+    "CodingAgentAdapter",
+    "CodingAgentContract",
+    "CodingAgentDriver",
+    "CodingAgentReceipt",
     "CodingCommandAdapter",
+    "CodingOutputFormat",
     "DomainAdapter",
     "DomainAdapterRegistry",
     "EvidenceKind",
