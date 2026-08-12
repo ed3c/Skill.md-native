@@ -1,0 +1,71 @@
+{
+  "adapter": "coding.command.v1",
+  "checks": [],
+  "command": [
+    "true"
+  ],
+  "domain": "coding",
+  "effective_limits": {
+    "max_model_calls": 0,
+    "max_network_requests": 0,
+    "max_output_tokens": 0,
+    "timeout_seconds": 60
+  },
+  "manifest_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "manifest_id": "coding.fixture",
+  "manifest_version": "1.0.0",
+  "plan_digest": "4b2286034f6395ac0cd066a6994b2cd69a65b945669718a2fdcbc9bf6c608c15",
+  "policy_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "provenance_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "required_evidence": [
+    "exit_code",
+    "stderr",
+    "runtime_metadata"
+  ],
+  "run_id": "run-artifacts-fixture",
+  "run_spec": {
+    "agent": {
+      "harness": "fixture",
+      "version": "1.0.0"
+    },
+    "limits": {
+      "max_model_calls": 0,
+      "max_network_requests": 0,
+      "max_output_tokens": 0,
+      "timeout_seconds": 60
+    },
+    "model": {
+      "model": "no-model",
+      "provider": "local",
+      "quota_class": "local"
+    },
+    "policy": {
+      "filesystem": "ephemeral",
+      "network": "deny-by-default",
+      "secrets": "brokered"
+    },
+    "run_id": "run-artifacts-fixture",
+    "runtime": {
+      "backend": "fake",
+      "image_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "version": "1.0.0"
+    },
+    "scenario": {
+      "id": "fixture",
+      "task": "private task"
+    },
+    "skill": {
+      "commit_or_digest": "1111111111111111111111111111111111111111",
+      "entrypoint": "SKILL.md",
+      "provenance_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "source_url": "https://example.test/skill"
+    }
+  },
+  "runtime_backend": "fake",
+  "runtime_capabilities": {
+    "network_deny_by_default": true,
+    "snapshot_restore": false
+  },
+  "schema_version": "1.0",
+  "stdin_digest": null
+}
