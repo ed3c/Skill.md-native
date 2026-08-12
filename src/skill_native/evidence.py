@@ -10,6 +10,9 @@ from .models import EvidenceBundle, InferenceReceipt
 from .policy import ReceiptLedger
 
 
+_EVIDENCE_CONTRACT_KEY = "evidence_contract"
+
+
 def canonical_digest(value: Any) -> str:
     data = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode()
     return hashlib.sha256(data).hexdigest()
@@ -42,11 +45,52 @@ def index_evidence(bundle: EvidenceBundle) -> dict[str, dict[str, Any]]:
     return objects
 
 
+def captured_evidence(bundle: EvidenceBundle) -> frozenset[str]:
+    """Return evidence kinds explicitly attested as collected by the trusted adapter.
+
+    Empty values such as a clean ``stderr`` or an empty network event stream are still
+    valid evidence when the adapter records that the collector ran. The attestation is
+    nested in runtime metadata so older EvidenceBundle payloads remain schema- and
+    digest-compatible when loaded by newer code.
+    """
+
+    contract = bundle.runtime_metadata.get(_EVIDENCE_CONTRACT_KEY, {})
+    values = contract.get("captured", []) if isinstance(contract, dict) else []
+    if not isinstance(values, (list, tuple, set, frozenset)):
+        return frozenset()
+    return frozenset(str(value) for value in values)
+
+
+def mark_evidence_captured(
+    bundle: EvidenceBundle,
+    kinds: Iterable[str],
+    *,
+    runtime_backend: str | None = None,
+) -> EvidenceBundle:
+    metadata = dict(bundle.runtime_metadata)
+    existing = captured_evidence(bundle)
+    raw_contract = metadata.get(_EVIDENCE_CONTRACT_KEY)
+    contract = dict(raw_contract) if isinstance(raw_contract, dict) else {}
+    contract.update(
+        {
+            "schema_version": "1.0",
+            "captured": sorted(existing.union(str(kind) for kind in kinds)),
+        }
+    )
+    metadata[_EVIDENCE_CONTRACT_KEY] = contract
+    if runtime_backend is not None:
+        metadata["runtime_backend"] = runtime_backend
+    return bundle.model_copy(update={"runtime_metadata": metadata})
+
+
 def attach_run_receipts(bundle: EvidenceBundle, ledger: ReceiptLedger | None) -> EvidenceBundle:
     if ledger is None:
         return bundle
     receipts = [InferenceReceipt.model_validate(r) for r in ledger.read(run_id=bundle.run_id)]
-    return bundle.model_copy(update={"inference": receipts})
+    updated = bundle.model_copy(update={"inference": receipts})
+    if receipts:
+        updated = mark_evidence_captured(updated, ["inference"])
+    return updated
 
 
 @dataclass(frozen=True)
