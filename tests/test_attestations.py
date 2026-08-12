@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import multiprocessing
 import os
 import tempfile
 import unittest
@@ -90,6 +91,24 @@ def fixture_policy(public_key, identity, *, require_rank_eligible=False):
     )
 
 
+def _concurrent_append_worker(log_path: str, suffix: str) -> None:
+    bundle = make_bundle()
+    private_key = fixture_private_key()
+    public_key = private_key.public_key()
+    identity = fixture_identity(suffix=f":{suffix}")
+    envelope = sign_bundle(bundle, identity, private_key)
+    policy = build_trust_policy(
+        policy_id=f"concurrent-{suffix}",
+        allowed_key_ids=[key_id_for_public_key(public_key)],
+    )
+    TransparencyLog(Path(log_path), log_id="fixture.concurrent").append(
+        envelope,
+        bundle,
+        public_key,
+        policy,
+    )
+
+
 class AttestationTests(unittest.TestCase):
     def test_dsse_pae_and_ed25519_attestation_are_deterministic(self):
         bundle = make_bundle()
@@ -130,7 +149,10 @@ class AttestationTests(unittest.TestCase):
         )
         self.assertTrue(receipt.passed)
         self.assertTrue(receipt.rank_eligible)
-        self.assertEqual(parse_statement(first).predicate.bundle_digest, bundle.bundle_digest)
+        self.assertEqual(
+            parse_statement(first).predicate.bundle_digest,
+            bundle.bundle_digest,
+        )
 
     def test_payload_signature_key_and_identity_tampering_fail_closed(self):
         bundle = make_bundle()
@@ -245,7 +267,10 @@ class AttestationTests(unittest.TestCase):
         policy = fixture_policy(public_key, identity)
 
         with tempfile.TemporaryDirectory() as td:
-            log = TransparencyLog(Path(td) / "run-artifacts.jsonl", log_id="fixture.log")
+            log = TransparencyLog(
+                Path(td) / "run-artifacts.jsonl",
+                log_id="fixture.log",
+            )
             first = log.append(envelope, bundle, public_key, policy)
             self.assertEqual(log.verify().tree_size, 1)
             self.assertTrue(log.verify_receipt(first))
@@ -300,12 +325,18 @@ class AttestationTests(unittest.TestCase):
 
             mutated = json.loads(lines[0])
             mutated["bundle_digest"] = "0" * 64
-            lines[0] = json.dumps(mutated, sort_keys=True, separators=(",", ":")) + "\n"
+            lines[0] = (
+                json.dumps(mutated, sort_keys=True, separators=(",", ":"))
+                + "\n"
+            )
             path.write_text("".join(lines), encoding="utf-8")
             with self.assertRaises(AttestationError):
                 log.verify()
 
-            path.write_text(original_log.splitlines(keepends=True)[0], encoding="utf-8")
+            path.write_text(
+                original_log.splitlines(keepends=True)[0],
+                encoding="utf-8",
+            )
             log.checkpoint_path.write_text(original_checkpoint, encoding="utf-8")
             with self.assertRaisesRegex(AttestationError, "mutation or truncation"):
                 log.verify()
@@ -335,6 +366,17 @@ class AttestationTests(unittest.TestCase):
                 commit_sha="a" * 40,
             )
 
+        with self.assertRaises(ValidationError):
+            AttestationIdentity(
+                issuer="https://token.actions.githubusercontent.com",
+                subject="repo:ed3c/Skill.md-native:ref:refs/heads/main",
+                repository="ed3c/Skill.md-native",
+                workflow_ref=(
+                    "ed3c/Skill.md-native/.github/workflows/unit.yml@" + "a" * 40
+                ),
+                commit_sha="b" * 40,
+            )
+
         bundle = make_bundle()
         envelope = sign_bundle(bundle, fixture_identity(), fixture_private_key())
         raw = envelope.model_dump(mode="json", by_alias=True)
@@ -358,10 +400,53 @@ class AttestationTests(unittest.TestCase):
             ],
         )
         with tempfile.TemporaryDirectory() as td:
-            log = TransparencyLog(Path(td) / "run-artifacts.jsonl", log_id="fixture.log")
+            log = TransparencyLog(
+                Path(td) / "run-artifacts.jsonl",
+                log_id="fixture.log",
+            )
             with self.assertRaisesRegex(AttestationError, "not authorized"):
                 log.append(envelope, bundle, public_key, wrong_policy)
             self.assertFalse(log.path.exists())
+
+    def test_transparency_rejects_noncanonical_lines(self):
+        bundle = make_bundle()
+        private_key = fixture_private_key()
+        public_key = private_key.public_key()
+        identity = fixture_identity()
+        envelope = sign_bundle(bundle, identity, private_key)
+        policy = fixture_policy(public_key, identity)
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "run-artifacts.jsonl"
+            log = TransparencyLog(path, log_id="fixture.log")
+            log.append(envelope, bundle, public_key, policy)
+            entry = json.loads(path.read_text(encoding="utf-8"))
+            path.write_text(json.dumps(entry, indent=2) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(AttestationError, "canonical JSON"):
+                log.verify()
+
+    def test_transparency_serializes_concurrent_writers(self):
+        if os.name != "posix":
+            self.skipTest("local transparency locking requires POSIX fcntl")
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "run-artifacts.jsonl"
+            context = multiprocessing.get_context("fork")
+            processes = [
+                context.Process(
+                    target=_concurrent_append_worker,
+                    args=(str(path), str(index)),
+                )
+                for index in range(4)
+            ]
+            for process in processes:
+                process.start()
+            for process in processes:
+                process.join(30)
+                self.assertEqual(process.exitcode, 0)
+            state = TransparencyLog(
+                path,
+                log_id="fixture.concurrent",
+            ).verify()
+            self.assertEqual(state.tree_size, 4)
 
     def test_schema_export_is_deterministic(self):
         with tempfile.TemporaryDirectory() as td:
