@@ -33,9 +33,24 @@ class AttestationIdentity(_StrictModel):
         min_length=3,
         pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
     )
-    workflow_ref: str = Field(min_length=1)
+    workflow_ref: str = Field(
+        min_length=1,
+        pattern=(
+            r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/"
+            r"[A-Za-z0-9_./-]+@[0-9a-f]{40}$"
+        ),
+    )
     commit_sha: str = Field(pattern=_COMMIT_PATTERN)
     environment: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def validate_workflow_repository(self) -> "AttestationIdentity":
+        expected_prefix = f"{self.repository}/.github/workflows/"
+        if not self.workflow_ref.startswith(expected_prefix):
+            raise ValueError(
+                "workflow_ref must name an immutable workflow in identity.repository"
+            )
+        return self
 
 
 class StatementSubject(_StrictModel):
@@ -123,7 +138,14 @@ class DSSEEnvelope(_StrictModel):
             value = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("DSSE payload must be UTF-8 JSON") from exc
-        RunArtifactStatement.model_validate(value)
+        statement = RunArtifactStatement.model_validate(value)
+        canonical = json.dumps(
+            statement.model_dump(mode="json", by_alias=True),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        if raw != canonical:
+            raise ValueError("DSSE statement payload must use canonical JSON encoding")
         return self
 
 
