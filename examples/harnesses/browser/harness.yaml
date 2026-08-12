@@ -1,0 +1,157 @@
+schema_version: "1.0"
+identity:
+  id: browser.playwright-loopback
+  version: "0.1.0"
+  domain: browser
+  description: Deterministic Playwright Chromium loopback fixture.
+
+licensing:
+  code: MIT
+  models: []
+  datasets: []
+  dependencies:
+    - playwright-python:Apache-2.0
+
+environment:
+  allowed_runtimes:
+    - fake
+  required_capabilities:
+    - stdin_stream
+  network: deny-by-default
+  filesystem: ephemeral
+  secrets: brokered
+
+interfaces:
+  action_schema: urn:skill-native:browser-action:v1
+  observation_schema: urn:skill-native:browser-receipt:v1
+  protocols:
+    - playwright
+
+execution:
+  adapter: browser.playwright.v1
+  command:
+    - managed-by-browser-playwright-adapter
+
+browser:
+  schema_version: "1.0"
+  driver: playwright-python
+  driver_version: 1.61.0
+  browser: chromium
+  headless: true
+  allowed_origins:
+    - http://127.0.0.1:8765
+  actions:
+    - kind: goto
+      url: http://127.0.0.1:8765/
+    - kind: fill
+      selector: "#name"
+      value: Eeon
+    - kind: click
+      selector: "#submit"
+    - kind: assert_text
+      selector: "#result"
+      value: Hello Eeon
+      match: exact
+    - kind: click
+      selector: "#dialog"
+      dialog_action: accept
+    - kind: click
+      selector: "#popup"
+      expect_popup: true
+    - kind: click
+      selector: "#download"
+      download_name: fixture.txt
+    - kind: screenshot
+      name: checkpoint
+      full_page: true
+    - kind: assert_title
+      value: Browser Fixture
+      match: exact
+    - kind: assert_url
+      value: http://127.0.0.1:8765/
+  artifact_root: .skill-native/browser-artifacts
+  viewport_width: 1280
+  viewport_height: 720
+  locale: en-US
+  action_timeout_ms: 10000
+  navigation_timeout_ms: 20000
+  max_pages: 2
+  max_events: 500
+  max_network_events: 500
+  max_console_bytes: 32000
+  max_dom_bytes: 500000
+  max_aria_bytes: 500000
+  max_artifact_bytes: 10000000
+  max_download_bytes: 1000000
+  capture_dom: true
+  capture_aria: true
+  final_screenshot: true
+
+evidence:
+  capture:
+    - exit_code
+    - stdout
+    - stderr
+    - commands
+    - network
+    - assertions
+    - runtime_metadata
+    - browser_receipt
+    - browser_events
+    - dom_snapshot
+    - accessibility_snapshot
+    - network_trace
+    - screenshots
+    - downloads
+    - browser_assertions
+  required:
+    - exit_code
+    - stdout
+    - stderr
+    - commands
+    - network
+    - assertions
+    - runtime_metadata
+    - browser_receipt
+    - browser_events
+    - dom_snapshot
+    - accessibility_snapshot
+    - network_trace
+    - screenshots
+    - downloads
+    - browser_assertions
+
+verification:
+  security_gate: fail-on-high-or-critical
+  checks:
+    - id: browser-process-clean
+      kind: exit_code_zero
+    - id: browser-receipt-valid
+      kind: assertion_true
+      assertion: browser_receipt_valid
+    - id: browser-outcome-pass
+      kind: assertion_true
+      assertion: browser_outcome_pass
+    - id: browser-artifacts-valid
+      kind: assertion_true
+      assertion: browser_artifacts_valid
+    - id: browser-stderr-empty
+      kind: stderr_empty
+
+budgets:
+  timeout_seconds: 120
+  max_model_calls: 0
+  max_output_tokens: 0
+  max_network_requests: 500
+
+replay:
+  supported: false
+  snapshot_required: false
+
+failure_taxonomy:
+  - environment_setup
+  - navigation_failure
+  - origin_policy_violation
+  - unexpected_side_effect
+  - artifact_integrity
+  - verification_failure
