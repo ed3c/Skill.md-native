@@ -7,6 +7,7 @@ from .run_artifact_common import (
     EvidenceGraph,
     EvidenceGraphEdge,
     EvidenceGraphNode,
+    RunArtifactError,
     _digest_ref,
     _json_mapping,
     _json_payload,
@@ -78,6 +79,24 @@ class _GraphBuilderMixin:
                 )
             )
             return edge_id
+
+        def register_source_evidence_id(raw_id: str, object_node: str) -> None:
+            existing = source_evidence_ids.get(raw_id)
+            if existing is not None:
+                raise RunArtifactError(
+                    f"duplicate source evidence id creates an ambiguous graph: {raw_id}"
+                )
+            source_evidence_ids[raw_id] = object_node
+
+        def require_source_evidence_id(raw_id: Any, *, context: str) -> str:
+            if not isinstance(raw_id, str) or not raw_id:
+                raise RunArtifactError(f"{context} must contain a non-empty evidence id")
+            target = source_evidence_ids.get(raw_id)
+            if target is None:
+                raise RunArtifactError(
+                    f"{context} references unknown source evidence id: {raw_id}"
+                )
+            return target
 
         run_spec = _json_mapping(plan.get("run_spec"), "plan.run_spec")
         skill = _json_mapping(run_spec.get("skill"), "plan.run_spec.skill")
@@ -178,7 +197,7 @@ class _GraphBuilderMixin:
             add_edge(object_node, evidence_node, "contained_in", attributes)
             raw_id = attributes.get("source_evidence_id")
             if isinstance(raw_id, str):
-                source_evidence_ids[raw_id] = object_node
+                register_source_evidence_id(raw_id, object_node)
 
         checks = verdict.get("checks", [])
         for index, raw_check in enumerate(checks):
@@ -195,31 +214,59 @@ class _GraphBuilderMixin:
             add_edge(check_node, verdict_node, "supports")
             add_edge(authority_node, check_node, "authorizes")
             evidence_ids = check.get("evidence_ids", [])
-            if isinstance(evidence_ids, list):
-                for evidence_id in evidence_ids:
-                    target = source_evidence_ids.get(str(evidence_id))
-                    if target is not None:
-                        add_edge(check_node, target, "references")
+            if not isinstance(evidence_ids, list):
+                raise RunArtifactError(
+                    f"verdict.checks[{index}].evidence_ids must be a list"
+                )
+            normalized_ids = [str(value) for value in evidence_ids]
+            if len(normalized_ids) != len(set(normalized_ids)):
+                raise RunArtifactError(
+                    f"verdict.checks[{index}].evidence_ids contains duplicates"
+                )
+            for evidence_id in evidence_ids:
+                target = require_source_evidence_id(
+                    evidence_id,
+                    context=f"verdict.checks[{index}].evidence_ids",
+                )
+                add_edge(check_node, target, "references")
 
         findings = verdict.get("security_findings", [])
-        if isinstance(findings, list):
-            for index, raw_finding in enumerate(findings):
-                finding = _json_mapping(
-                    raw_finding, f"verdict.security_findings[{index}]"
-                )
-                finding_node = add_node(
-                    "security_finding",
-                    canonical_digest(finding),
+        if not isinstance(findings, list):
+            raise RunArtifactError("verdict.security_findings must be a list")
+        for index, raw_finding in enumerate(findings):
+            finding = _json_mapping(
+                raw_finding, f"verdict.security_findings[{index}]"
+            )
+            finding_node = add_node(
+                "security_finding",
+                canonical_digest(finding),
+                {
+                    "severity": finding.get("severity"),
+                    "rule": finding.get("rule"),
+                },
+            )
+            add_edge(finding_node, verdict_node, "constrains")
+            source_id = finding.get("evidence_id")
+            if source_id in (None, ""):
+                continue
+            target = source_evidence_ids.get(str(source_id))
+            if target is None:
+                if verdict.get("status") == "pass" or verdict.get("security_gate") == "pass":
+                    raise RunArtifactError(
+                        "passing verdict contains a security finding with an unknown "
+                        f"source evidence id: {source_id}"
+                    )
+                unresolved_node = add_node(
+                    "unresolved_evidence_reference",
+                    canonical_digest({"source_evidence_id": str(source_id)}),
                     {
-                        "severity": finding.get("severity"),
-                        "rule": finding.get("rule"),
+                        "source_evidence_id": str(source_id),
+                        "resolved": False,
                     },
                 )
-                add_edge(finding_node, verdict_node, "constrains")
-                source_id = finding.get("evidence_id")
-                target = source_evidence_ids.get(str(source_id))
-                if target is not None:
-                    add_edge(finding_node, target, "derived_from")
+                add_edge(finding_node, unresolved_node, "references_missing")
+            else:
+                add_edge(finding_node, target, "derived_from")
 
         nodes = sorted(nodes, key=lambda node: node.id)
         edges = sorted(edges, key=lambda edge: edge.id)
