@@ -492,27 +492,25 @@ Do not violate these without an explicit architecture decision:
 
 ## 20. Immediate repository objective
 
-Finish and stabilize Draft PR #7 so the repository has one coherent MVP that supports:
+The implemented MVP from PR #7 is merged to `main`. Keep `main` stable and advance verification quality without overstating evidence.
+
+Current priority order:
 
 ```text
-cross-registry ingestion
-        +
-immutable provenance
-        +
-OpenShell / Cloudflare runtime contracts
-        +
-brokered inference
-        +
-runtime security evidence
-        +
-adversarial evaluation
-        +
-compatibility matrix
-        +
-evidence-first ranking/reporting
+stable merged MVP
+        ↓
+account-backed OpenShell execution
+        ↓
+account-backed Cloudflare execution
+        ↓
+persist immutable runtime evidence
+        ↓
+measure live adversarial detector quality
+        ↓
+upgrade eligible compatibility cells from implemented/integration-verified to runtime-verified
 ```
 
-Before merging, ensure the current unit/integration CI is green and clearly document any account-backed runtime verification that has not yet been executed.
+Open Issues #1, #2, #3, and #5 are intentionally retained as environment-backed runtime-verification gates. Do not close them from mocks, typechecks, contract tests, or merge status alone. When real runtime evidence becomes available, persist it first, link it to immutable provenance and exact runtime/model/policy metadata, then update the corresponding Issue and verification state.
 
 ## 21. Success criterion
 
