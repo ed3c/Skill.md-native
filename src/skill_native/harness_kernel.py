@@ -12,7 +12,6 @@ from .evidence import (
     EvidenceStore,
     attach_run_receipts,
     canonical_digest,
-    captured_evidence,
 )
 from .harness_adapters import DomainAdapterRegistry
 from .harness_contract import (
@@ -94,9 +93,12 @@ class HarnessKernel:
             effective_capabilities = capabilities or runtime_capabilities_for(
                 spec.runtime.backend
             )
-            effective_evidence = set(
-                available_evidence or runtime_evidence_for(spec.runtime.backend)
+            evidence_profile = (
+                available_evidence
+                if available_evidence is not None
+                else runtime_evidence_for(spec.runtime.backend)
             )
+            effective_evidence = set(evidence_profile)
         except ValueError as exc:
             raise HarnessContractError(str(exc)) from exc
         effective_evidence.update(_HARNESS_SUPPLIED_EVIDENCE)
