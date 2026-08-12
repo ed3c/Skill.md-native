@@ -12,6 +12,7 @@
 | Verified `main` head | `032a933d15f3770b93be24aa9abfed98b9a2a898` |
 | Head feature | signed Run Artifact attestations and local transparency publication |
 | Open feature PR | #29, `agent/27-browser-playwright-harness` |
+| Open documentation PR | #30, `agent/docs-integration-state-machine-index` |
 | Repository-level Git Town config | **not detected** |
 
 This file is a snapshot, not an oracle. Before editing it, re-read GitHub Issues, PR metadata, branch heads, and workflow results. Never copy an old status forward merely because the code still exists.
@@ -67,7 +68,20 @@ source/provenance
 | Allowed claim | implementation exists on the PR branch; Issue #27 records deterministic local Browser verification |
 | Forbidden claim | merged, GitHub Actions green, public-site verified, credentialed-site verified, hosted-browser verified, or isolated-runtime verified |
 
-Files on PR #29 include Browser contract/runner/adapter/runtime modules, Browser schemas, loopback examples, tests, and schema-sync workflow changes. The PR does not change `README.md`, so this documentation PR can remain independent.
+Files on PR #29 include Browser contract/runner/adapter/runtime modules, Browser schemas, loopback examples, tests, and schema-sync workflow changes. The PR does not change `README.md`, so documentation PR #30 remains independent.
+
+### Documentation state/index — Draft PR #30
+
+| Field | State |
+|---|---|
+| Branch | `agent/docs-integration-state-machine-index` |
+| Base | `main@032a933d15f3770b93be24aa9abfed98b9a2a898` |
+| PR state | open, Draft; exact current head and mergeability must be read from PR metadata |
+| Scope | root README topology/state/data-flow/stack index; Integration State, State Machine, Stacked Delivery, and docs indexes |
+| Establishes | documentation traceability only |
+| Does not establish | implementation, schema, CI, integration, runtime, Browser, or Android evidence state |
+
+Because a document cannot contain its own final commit SHA without becoming self-referential, PR #30's exact head is intentionally resolved from GitHub metadata rather than hard-coded here.
 
 ### Android Harness — Issue #28
 
@@ -128,10 +142,11 @@ A state can coexist with another state. For example, a run may be content-addres
 1. Keep `main` aligned with the exact merged truth above.
 2. Resolve PR #29's `action_required` workflow state before claiming hosted CI.
 3. Merge Browser only after its PR description, Issue #27, schemas, tests, and observed workflow evidence agree.
-4. Implement Android through atomic, independently reviewable stack slices described in [`STACKED_DELIVERY.md`](./STACKED_DELIVERY.md).
-5. Preserve the same authority → evidence → verdict → Run Artifact → attestation chain for every new domain.
-6. Persist external runtime evidence before upgrading Issues #1, #2, #3, or #5.
-7. Update this ledger whenever a PR merges, a branch is retargeted, or a verification state changes.
+4. Review and merge PR #30 only as documentation; do not infer a product evidence-state upgrade from it.
+5. Implement Android through atomic, independently reviewable stack slices described in [`STACKED_DELIVERY.md`](./STACKED_DELIVERY.md).
+6. Preserve the same authority → evidence → verdict → Run Artifact → attestation chain for every new domain.
+7. Persist external runtime evidence before upgrading Issues #1, #2, #3, or #5.
+8. Update this ledger whenever a PR merges, a branch is retargeted, or a verification state changes.
 
 ## Agent handoff checklist
 
