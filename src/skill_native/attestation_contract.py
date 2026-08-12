@@ -50,6 +50,9 @@ class AttestationIdentity(_StrictModel):
             raise ValueError(
                 "workflow_ref must name an immutable workflow in identity.repository"
             )
+        workflow_commit = self.workflow_ref.rsplit("@", 1)[1]
+        if workflow_commit != self.commit_sha:
+            raise ValueError("workflow_ref commit must match identity.commit_sha")
         return self
 
 
