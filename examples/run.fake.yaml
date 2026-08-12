@@ -1,0 +1,31 @@
+run_id: demo-001
+skill:
+  source_url: https://github.com/cloudflare/skills
+  commit_or_digest: PIN_ME
+  entrypoint: SKILL.md
+agent:
+  harness: codex
+  version: PIN_ME
+model:
+  provider: local
+  model: test-model
+  quota_class: local
+runtime:
+  backend: fake
+  version: "0.1"
+  image_digest: none
+policy:
+  network: deny-by-default
+  allowed_hosts: []
+  filesystem: ephemeral
+  secrets: brokered
+scenario:
+  id: bootstrap
+  task: Validate the evidence pipeline without running untrusted code.
+  assertions:
+    - runtime_completed
+limits:
+  timeout_seconds: 60
+  max_model_calls: 0
+  max_output_tokens: 0
+  max_network_requests: 0

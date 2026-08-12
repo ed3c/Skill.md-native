@@ -1,0 +1,7 @@
+{
+  "name": "skill-native-dynamic-runtime",
+  "private": true,
+  "type": "module",
+  "scripts": {"typecheck": "tsc --noEmit", "deploy": "wrangler deploy", "dev": "wrangler dev"},
+  "devDependencies": {"@cloudflare/workers-types": "latest", "typescript": "latest", "wrangler": "latest"}
+}

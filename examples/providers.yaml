@@ -1,0 +1,32 @@
+providers:
+  - name: local
+    kind: local
+    base_url: http://127.0.0.1:8000/v1
+    model: local-model
+    quota_class: local
+    enabled: true
+
+  - name: groq-free
+    kind: groq
+    base_url: https://api.groq.com/openai/v1
+    model: openai/gpt-oss-20b
+    quota_class: free
+    api_key_env: GROQ_API_KEY
+    enabled: false
+
+  - name: gemini-free
+    kind: gemini
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    model: gemini-3.6-flash
+    quota_class: free
+    api_key_env: GEMINI_API_KEY
+    enabled: false
+
+  # Replace ACCOUNT_ID before enabling. Workers AI exposes an OpenAI-compatible endpoint.
+  - name: workers-ai-free
+    kind: cloudflare
+    base_url: https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+    quota_class: free
+    api_key_env: CLOUDFLARE_API_KEY
+    enabled: false

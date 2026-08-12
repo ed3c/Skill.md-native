@@ -1,0 +1,46 @@
+name: unit
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install
+        run: python -m pip install -e .
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Compile smoke policy
+        run: skill-native compile-openshell-policy examples/run.openshell.yaml > /tmp/openshell-policy.yaml
+      - name: Materialize adversarial fixtures
+        run: skill-native materialize-fixtures /tmp/fixtures
+
+  cloudflare-contracts:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [cloudflare/worker, cloudflare/dynamic-worker]
+    defaults:
+      run:
+        working-directory: ${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ${{ matrix.project }}/package.json
+      - run: npm install --ignore-scripts
+      - run: npm run typecheck
