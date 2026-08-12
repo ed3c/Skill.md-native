@@ -8,6 +8,7 @@ from typing import Annotated, Any, Literal, Union
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .browser_contract import BrowserContract, BrowserReceipt
 from .coding_contract import CodingAgentContract, CodingAgentReceipt
 from .evidence import canonical_digest
 from .models import EvidenceBundle, Limits, RunSpec, RuntimeBackend
@@ -36,6 +37,25 @@ _CODING_AGENT_EVIDENCE = frozenset(
         "agent_events",
         "workspace_diff",
         "test_results",
+    }
+)
+_BROWSER_EVIDENCE = frozenset(
+    {
+        "exit_code",
+        "stdout",
+        "stderr",
+        "commands",
+        "network",
+        "assertions",
+        "runtime_metadata",
+        "browser_receipt",
+        "browser_events",
+        "dom_snapshot",
+        "accessibility_snapshot",
+        "network_trace",
+        "screenshots",
+        "downloads",
+        "browser_assertions",
     }
 )
 
@@ -89,6 +109,14 @@ class EvidenceKind(str, Enum):
     AGENT_EVENTS = "agent_events"
     WORKSPACE_DIFF = "workspace_diff"
     TEST_RESULTS = "test_results"
+    BROWSER_RECEIPT = "browser_receipt"
+    BROWSER_EVENTS = "browser_events"
+    DOM_SNAPSHOT = "dom_snapshot"
+    ACCESSIBILITY_SNAPSHOT = "accessibility_snapshot"
+    NETWORK_TRACE = "network_trace"
+    SCREENSHOTS = "screenshots"
+    DOWNLOADS = "downloads"
+    BROWSER_ASSERTIONS = "browser_assertions"
 
 
 class VerdictStatus(str, Enum):
@@ -273,6 +301,7 @@ class HarnessManifest(_StrictModel):
     interfaces: InterfaceContract = Field(default_factory=InterfaceContract)
     execution: ExecutionContract
     coding: CodingAgentContract | None = None
+    browser: BrowserContract | None = None
     evidence: EvidenceContract
     verification: VerificationContract
     budgets: BudgetContract = Field(default_factory=BudgetContract)
@@ -295,6 +324,23 @@ class HarnessManifest(_StrictModel):
                 )
         elif self.coding is not None:
             raise ValueError("coding contract is only valid with execution.adapter=coding.agent.v1")
+
+        if self.execution.adapter == "browser.playwright.v1":
+            if self.identity.domain is not HarnessDomain.BROWSER:
+                raise ValueError("browser.playwright.v1 requires identity.domain=browser")
+            if self.browser is None:
+                raise ValueError("browser.playwright.v1 requires a browser contract")
+            required = {kind.value for kind in self.evidence.required}
+            missing = sorted(_BROWSER_EVIDENCE - required)
+            if missing:
+                raise ValueError(
+                    "browser.playwright.v1 requires mandatory browser evidence: "
+                    + ", ".join(missing)
+                )
+        elif self.browser is not None:
+            raise ValueError(
+                "browser contract is only valid with execution.adapter=browser.playwright.v1"
+            )
 
         required_evidence = set(self.evidence.required)
         for check in self.verification.checks:
@@ -409,6 +455,7 @@ def export_harness_schemas(output: Path) -> dict[str, Path]:
         "harness-plan.schema.json": HarnessPlan.model_json_schema(),
         "harness-verdict.schema.json": HarnessVerdict.model_json_schema(),
         "coding-agent-receipt.schema.json": CodingAgentReceipt.model_json_schema(),
+        "browser-receipt.schema.json": BrowserReceipt.model_json_schema(),
     }
     result: dict[str, Path] = {}
     for name, schema in schemas.items():
