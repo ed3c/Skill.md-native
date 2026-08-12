@@ -2,7 +2,7 @@
 
 Runtime-verified evidence, security, compatibility, and outcome ranking for Agent Skills across registries.
 
-> **Coding/AI Agents:** read [`AGENTS.md`](./AGENTS.md) before making changes. It is the canonical product requirements, security invariants, roadmap, evidence contract, CI rules, and Definition of Done for this repository.
+> **Coding/AI Agents:** read [`AGENTS.md`](./AGENTS.md) before making changes. It is the canonical product requirements, security invariants, roadmap, evidence contract, CI rules, and Definition of Done for this repository. The cross-domain extension contract is documented in [`docs/HARNESS_KERNEL.md`](./docs/HARNESS_KERNEL.md).
 
 ## Mission
 
@@ -12,14 +12,51 @@ Every third-party `SKILL.md` package is treated as an untrusted executable suppl
 Registry
   -> immutable provenance + SBOM
   -> RunSpec
+  -> HarnessManifest + DomainAdapter
+  -> digest-addressed HarnessPlan
   -> OpenShell | Cloudflare Sandbox | Dynamic Worker | Fake
   -> governed inference broker
   -> EvidenceBundle + evidence IDs
-  -> security gate
+  -> deterministic verifiers + security gate
+  -> digest-addressed HarnessVerdict
   -> Skill x Agent x Runtime x Model matrix
   -> ScorePolicy
   -> digest-addressed report / score artifacts
 ```
+
+## Cross-domain Harness Kernel
+
+The v0.1 Harness Kernel makes the portable evaluation unit explicit:
+
+```text
+SKILL.md
++ harness.yaml
++ immutable RunSpec
++ runtime capability/evidence profile
++ executable assertions
++ EvidenceBundle
++ HarnessVerdict
+```
+
+The manifest vocabulary covers Coding, Browser, Android, Desktop, SRE, Documents, Voice, Robotics, and custom domains. This increment implements only the trusted `coding.command.v1` adapter and deterministic `FakeRuntime` vertical slice. Unknown adapters, unsupported capabilities, unsupported evidence, weaker policies, mutable Skill references, missing provenance, and budget overruns fail before execution.
+
+```bash
+skill-native validate-harness examples/harnesses/coding/harness.yaml
+
+skill-native plan-harness \
+  examples/harnesses/coding/harness.yaml \
+  examples/harnesses/coding/run.fake.yaml
+
+skill-native run-harness-fake \
+  examples/harnesses/coding/harness.yaml \
+  examples/harnesses/coding/run.fake.yaml \
+  --evidence-dir /tmp/skill-native-evidence \
+  --verdict-dir /tmp/skill-native-verdicts
+```
+
+The committed JSON Schemas are under [`schemas/`](./schemas). CI regenerates and compares them to prevent schema drift. See [`docs/HARNESS_KERNEL.md`](./docs/HARNESS_KERNEL.md) for the trust model, compiler invariants, verifier semantics, adapter rules, and domain rollout sequence.
+
+A passing fake-runtime verdict is **implemented deterministic contract evidence**, not live sandbox or cross-agent verification.
 
 ## Immutable ingestion
 
@@ -46,6 +83,8 @@ OpenAI currently documents the Plugin Directory product but not a public directo
 ## Supply-chain evidence
 
 `build_supply_chain_evidence()` records publisher consistency, explicit signature status, and a CycloneDX 1.6 SBOM digest derived from discovered dependency manifests. Missing signatures/licenses remain explicit evidence states rather than inferred trust.
+
+A `harness.yaml` licensing block is a declaration only. It never overrides source license files, model/dataset licenses, dependency evidence, or provenance results.
 
 ## Governed inference broker
 
@@ -81,13 +120,17 @@ Cloudflare Sandbox requires an eligible Cloudflare account/plan. The integration
 
 ### Enroot
 
-Enroot remains a performance/compatibility reference only; it is not used as the primary hostile-code security boundary.
+Enroot remains a performance/compatibility reference only; it is not used as the primary hostile-code security boundary. The Harness Kernel intentionally has no Enroot capability/evidence profile yet, so Harness compilation fails closed for that backend.
+
+### Fake runtime
+
+`FakeRuntime` validates contracts and CI logic only. Its evidence records `verification_state=deterministic-mock`; it does not establish live runtime behavior.
 
 ## Adversarial benchmark
 
 `skill-native materialize-fixtures <dir>` produces executable synthetic Skill packages covering benign writes, prompt/code injection, credential access, undeclared egress, persistence/control-file mutation, and sandbox-boundary probes. Hidden variants use seeded case IDs to reduce hard-coded benchmark behavior. A MalSkillBench-compatible JSONL importer keeps the external corpus and its licensing separate from this repository.
 
-Every derived security finding references an immutable `evidence_id`. High/Critical violations trip a non-compensable security gate even when the task itself succeeds.
+Every derived security finding references an immutable `evidence_id`. High/Critical violations trip a non-compensable security gate even when the task itself succeeds. The Harness Kernel preserves the same rule in every verdict.
 
 ## Ranking and reports
 
@@ -106,7 +149,7 @@ skill-native build-report matrix-input.jsonl --output report.json
 
 ## Verification
 
-`.github/workflows/unit.yml` verifies the Python evidence/evaluation core and type-checks both Cloudflare runtime projects. `.github/workflows/integration.yml` performs a live public GitHub ingestion on pull requests and exposes explicit dispatch jobs for real OpenShell and Cloudflare account-backed validation.
+`.github/workflows/unit.yml` verifies the Python evidence/evaluation core, Harness schemas and deterministic vertical slice, and type-checks both Cloudflare runtime projects. `.github/workflows/integration.yml` performs a live public GitHub ingestion on pull requests and exposes explicit dispatch jobs for real OpenShell and Cloudflare account-backed validation.
 
 The project distinguishes three states:
 
@@ -115,3 +158,7 @@ The project distinguishes three states:
 - **runtime-verified**: the evidence bundle satisfies the security/runtime assertions for that exact pinned artifact.
 
 This distinction prevents a green mock test from being represented as proof that an external sandbox or provider was actually exercised.
+
+## License
+
+The repository source is licensed under the [MIT License](./LICENSE). Model weights, datasets, third-party Skills, generated artifacts, and dependencies may carry separate licenses and must be evaluated independently.
