@@ -27,14 +27,17 @@ jobs:
             tests.test_coding_agent \
             tests.test_runtime_harness_controllers \
             -v
+      - name: Verify deterministic Run Artifact Bundle
+        run: python -m unittest tests.test_run_artifacts -v
       - name: Compile smoke policy
         run: skill-native compile-openshell-policy examples/run.openshell.yaml > /tmp/openshell-policy.yaml
       - name: Materialize adversarial fixtures
         run: skill-native materialize-fixtures /tmp/fixtures
-      - name: Verify committed Harness schemas
+      - name: Verify committed schemas
         run: |
-          skill-native export-harness-schemas /tmp/harness-schemas
-          diff -ru schemas /tmp/harness-schemas
+          skill-native export-harness-schemas /tmp/all-schemas
+          skill-native-run-artifacts export-schemas /tmp/all-schemas
+          diff -ru schemas /tmp/all-schemas
       - name: Validate and compile Harness fixtures
         run: |
           skill-native validate-harness examples/harnesses/coding/harness.yaml > /tmp/harness-manifest.json
@@ -55,6 +58,15 @@ jobs:
             --verdict-dir /tmp/harness-verdicts > /tmp/harness-result.json
           test "$(find /tmp/harness-evidence -type f | wc -l)" -eq 1
           test "$(find /tmp/harness-verdicts -type f | wc -l)" -eq 1
+      - name: Build deterministic Run Artifact Bundle fixture
+        run: |
+          skill-native-run-artifacts build \
+            --authority examples/run-artifacts/authority.json \
+            --plan examples/run-artifacts/plan.json \
+            --evidence examples/run-artifacts/evidence.json \
+            --verdict examples/run-artifacts/verdict.json \
+            --output /tmp/run-artifacts > /tmp/run-artifacts-result.json
+          test "$(find /tmp/run-artifacts -name '*.json' -type f | wc -l)" -eq 6
 
   cloudflare-contracts:
     runs-on: ubuntu-latest

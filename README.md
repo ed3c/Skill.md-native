@@ -1,27 +1,29 @@
 # Skill.md-native
 
-Runtime-verified evidence, security, compatibility, and outcome ranking for Agent Skills across registries.
+Runtime-verified evidence, security, compatibility, and outcome ranking for Agent Skills across registries and execution domains.
 
-> **Coding/AI Agents:** read [`AGENTS.md`](./AGENTS.md) before making changes. It is the canonical product requirements, security invariants, roadmap, evidence contract, CI rules, and Definition of Done for this repository. The cross-domain extension contract is documented in [`docs/HARNESS_KERNEL.md`](./docs/HARNESS_KERNEL.md).
+> **Coding/AI Agents:** read [`AGENTS.md`](./AGENTS.md) before changing code, Issues, CI, runtime adapters, evaluation logic, or documentation. The cross-domain execution contract is in [`docs/HARNESS_KERNEL.md`](./docs/HARNESS_KERNEL.md), Coding Agent trust boundaries are in [`docs/CODING_AGENT_HARNESS.md`](./docs/CODING_AGENT_HARNESS.md), and evaluator authority/Evidence Graph/replay/scorecard contracts are in [`docs/RUN_ARTIFACTS.md`](./docs/RUN_ARTIFACTS.md).
 
 ## Mission
 
-Every third-party `SKILL.md` package is treated as an untrusted executable supply-chain artifact. The project pins its origin, executes it through isolated runtimes, captures content-addressed evidence, evaluates security behavior, and ranks results without silently mixing Agent, Runtime, or Model confounders.
+Every third-party `SKILL.md` package is treated as an untrusted executable supply-chain artifact. The project pins its origin, executes it through isolated runtimes, captures content-addressed evidence, evaluates security and task outcomes, and ranks results without silently mixing Agent, Runtime, Model, Skill, or evaluator confounders.
 
 ```text
-Registry
-  -> immutable provenance + SBOM
+Registry / Repository / Plugin source
+  -> immutable Skill provenance + SBOM
   -> RunSpec
   -> HarnessManifest + DomainAdapter
+  -> explicit EvaluatorAuthority sidecar
   -> digest-addressed HarnessPlan
   -> OpenShell | Cloudflare Sandbox | Dynamic Worker | Fake
   -> governed inference broker
-  -> EvidenceBundle + evidence IDs
-  -> deterministic verifiers + security gate
+  -> EvidenceBundle + collector attestation + evidence IDs
+  -> deterministic verifiers + non-compensable security gate
   -> digest-addressed HarnessVerdict
-  -> Skill x Agent x Runtime x Model matrix
-  -> ScorePolicy
-  -> digest-addressed report / score artifacts
+  -> EvidenceGraph + ReplayManifest + LogicalTrace
+  -> evidence-first OutcomeScorecard
+  -> Skill x Agent x Runtime x Model compatibility matrix
+  -> digest-addressed reports and ranking artifacts
 ```
 
 ## Cross-domain Harness Kernel
@@ -38,7 +40,16 @@ SKILL.md
 + HarnessVerdict
 ```
 
-The manifest vocabulary covers Coding, Browser, Android, Desktop, SRE, Documents, Voice, Robotics, and custom domains. This increment implements only the trusted `coding.command.v1` adapter and deterministic `FakeRuntime` vertical slice. Unknown adapters, unsupported capabilities, unsupported evidence, weaker policies, mutable Skill references, missing provenance, and budget overruns fail before execution.
+The manifest vocabulary covers Coding, Browser, Android, Desktop, SRE, Documents, Voice, Robotics, and custom domains. The implemented adapters are:
+
+```text
+coding.command.v1
+coding.agent.v1
+```
+
+`coding.command.v1` is the deterministic command vertical slice. `coding.agent.v1` adds a trusted wrapper, structured agent events, workspace change policy, deterministic test evidence, bounded output, task delivery over stdin, and a digest-addressed `CodingAgentReceipt`. Live Codex, Gemini CLI, Qwen Code, OpenHands, Browser, Android, and other domain execution are not implied by the vocabulary alone.
+
+Unknown adapters, unsupported capabilities, unsupported evidence, weaker policies, mutable Skill references, missing provenance, malformed receipts, and budget overruns fail closed.
 
 ```bash
 skill-native validate-harness examples/harnesses/coding/harness.yaml
@@ -47,16 +58,58 @@ skill-native plan-harness \
   examples/harnesses/coding/harness.yaml \
   examples/harnesses/coding/run.fake.yaml
 
-skill-native run-harness-fake \
-  examples/harnesses/coding/harness.yaml \
-  examples/harnesses/coding/run.fake.yaml \
-  --evidence-dir /tmp/skill-native-evidence \
-  --verdict-dir /tmp/skill-native-verdicts
+skill-native validate-harness examples/harnesses/coding-agent/harness.yaml
+
+skill-native plan-harness \
+  examples/harnesses/coding-agent/harness.yaml \
+  examples/harnesses/coding-agent/run.fake.yaml
 ```
 
-The committed JSON Schemas are under [`schemas/`](./schemas). CI regenerates and compares them to prevent schema drift. See [`docs/HARNESS_KERNEL.md`](./docs/HARNESS_KERNEL.md) for the trust model, compiler invariants, verifier semantics, adapter rules, and domain rollout sequence.
+The committed JSON Schemas are under [`schemas/`](./schemas). Schema generation is deterministic and CI compares generated outputs with committed files to prevent drift.
 
-A passing fake-runtime verdict is **implemented deterministic contract evidence**, not live sandbox or cross-agent verification.
+A passing fake-runtime verdict is **implemented deterministic contract evidence**, not live model, sandbox, or cross-agent verification.
+
+## Evaluator authority and Run Artifact Bundle
+
+A package-supplied test command or assertion is not automatically trusted. `skill-native-run-artifacts` requires a separate `EvaluatorAuthority` sidecar that pins the evaluator repository/artifact and binds it to the exact `manifest_digest` compiled into the plan.
+
+```text
+EvaluatorAuthority
++ HarnessPlan
++ EvidenceBundle
++ HarnessVerdict
+        │
+        ▼
+RunArtifactBundle
+├── EvidenceGraph
+├── ReplayManifest
+├── LogicalTrace
+└── OutcomeScorecard
+```
+
+The builder validates the plan/verdict digest chain and continuity across run, manifest, provenance, runtime, evidence, and verdict before deriving any artifact. Mutable evaluator refs such as `main`, `master`, `HEAD`, or `latest` are rejected.
+
+```bash
+skill-native-run-artifacts build \
+  --authority examples/run-artifacts/authority.json \
+  --plan examples/run-artifacts/plan.json \
+  --evidence examples/run-artifacts/evidence.json \
+  --verdict examples/run-artifacts/verdict.json \
+  --output /tmp/run-artifacts
+```
+
+Mandatory evidence coverage is calculated from trusted collector attestation, not from empty default fields. Exact replay requires snapshot capability, a captured snapshot digest, and a SHA-256-pinned runtime image. Logical trace IDs are deterministic, while timing remains explicitly `not-captured` until a real OpenTelemetry/OpenInference exporter supplies timing evidence.
+
+The `evidence-first-v1` scorecard keeps these failures non-compensable:
+
+```text
+High/Critical finding or failed security gate
+failed HarnessVerdict
+missing mandatory evidence
+failed verifier
+```
+
+See [`docs/RUN_ARTIFACTS.md`](./docs/RUN_ARTIFACTS.md) for the complete trust model, graph relationships, replay classes, score policy, CLI, schemas, and verification vocabulary.
 
 ## Immutable ingestion
 
@@ -130,16 +183,18 @@ Enroot remains a performance/compatibility reference only; it is not used as the
 
 `skill-native materialize-fixtures <dir>` produces executable synthetic Skill packages covering benign writes, prompt/code injection, credential access, undeclared egress, persistence/control-file mutation, and sandbox-boundary probes. Hidden variants use seeded case IDs to reduce hard-coded benchmark behavior. A MalSkillBench-compatible JSONL importer keeps the external corpus and its licensing separate from this repository.
 
-Every derived security finding references an immutable `evidence_id`. High/Critical violations trip a non-compensable security gate even when the task itself succeeds. The Harness Kernel preserves the same rule in every verdict.
+Every derived security finding references an immutable `evidence_id`. High/Critical violations trip a non-compensable security gate even when the task itself succeeds. The Harness Kernel and Run Artifact scorecard preserve the same rule.
 
 ## Ranking and reports
 
-`ScorePolicy v0.4` versions the aggregate weights:
+`ScorePolicy v0.4` versions the compatibility-matrix aggregate weights:
 
 - correctness: 70%
 - reproducibility: 20%
 - least privilege: 10%
 - any High/Critical security gate failure: aggregate score = 0
+
+The Run Artifact `evidence-first-v1` scorecard is a per-run prerequisite layer. It determines whether a run is eligible to enter cross-run ranking based on mandatory evidence, verifier success, security, and replay classification. It does not replace multi-cell statistical ranking.
 
 Latency, tokens, estimated cost, recovery, denied-network counts, and other measurements remain visible as raw dimensions. Reports add Wilson confidence intervals and multi-axis verification: a Skill is not globally `verified` from repeated runs in one cell; the default policy requires coverage across at least two Agents, two Runtimes, and two Models with sufficient samples in every cell.
 
@@ -149,15 +204,16 @@ skill-native build-report matrix-input.jsonl --output report.json
 
 ## Verification
 
-`.github/workflows/unit.yml` verifies the Python evidence/evaluation core, Harness schemas and deterministic vertical slice, and type-checks both Cloudflare runtime projects. `.github/workflows/integration.yml` performs a live public GitHub ingestion on pull requests and exposes explicit dispatch jobs for real OpenShell and Cloudflare account-backed validation.
+`.github/workflows/unit.yml` defines Python regression, Coding Agent fixture, Run Artifact fixture, schema-drift, and Cloudflare TypeScript contract checks. `.github/workflows/integration.yml` performs a live public GitHub ingestion on pull requests and exposes explicit dispatch jobs for real OpenShell and Cloudflare account-backed validation.
 
-The project distinguishes three states:
+The project distinguishes four states:
 
-- **implemented**: code + deterministic tests exist;
-- **integration-verified**: a real external service/runtime produced evidence;
-- **runtime-verified**: the evidence bundle satisfies the security/runtime assertions for that exact pinned artifact.
+- **implemented**: code, schemas, and deterministic tests exist;
+- **integration-verified**: a real external adapter/service produced persisted evidence;
+- **runtime-verified**: the pinned artifact ran in the declared isolated runtime and all required assertions passed;
+- **cryptographically attested**: a trusted signing identity covered the relevant digests.
 
-This distinction prevents a green mock test from being represented as proof that an external sandbox or provider was actually exercised.
+A configured workflow is not a passing workflow. Jobs that fail to start because of repository/account infrastructure are recorded as blocked infrastructure, not test evidence.
 
 ## License
 
