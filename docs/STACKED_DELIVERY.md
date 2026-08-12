@@ -44,13 +44,17 @@ blocked-infrastructure
 
 ```text
 main@032a933d15f3770b93be24aa9abfed98b9a2a898
-└── agent/27-browser-playwright-harness@c58cbef0ac5f21356ccf454cd1bf1c6396e0049d
-    └── PR #29 → Issue #27
-        state: open / Draft / mergeable
-        workflows: action_required at snapshot
+├── agent/27-browser-playwright-harness@c58cbef0ac5f21356ccf454cd1bf1c6396e0049d
+│   └── PR #29 → Issue #27
+│       state: open / Draft / mergeable
+│       workflows: action_required at snapshot
+└── agent/docs-integration-state-machine-index
+    └── PR #30
+        state: open / Draft
+        scope: documentation-only state, data-flow, and Stack index
 ```
 
-This is a single-node feature stack. It is not currently a multi-PR Git Town stack.
+These are independent `main`-based branches, not a parent/child stack. PR #30 must not be retargeted onto PR #29 because its purpose is to describe both merged `main` and open work without depending on the Browser implementation branch.
 
 ## Merged implementation chain
 
@@ -90,6 +94,25 @@ PR #29 currently combines the following terminal slices. They are indexed for re
 | B8 workflow automation | `schema-sync-pr.yml` | schema change → regenerated schema commit/check | Does automation preserve branch authorship/trust and actually execute under repository policy? |
 
 Before PR #29 is merged, the PR body and Issue #27 should link each slice to observed checks. `action_required` is not green CI.
+
+## PR #30 documentation slice
+
+PR #30 is a standalone documentation slice based on `main`.
+
+```text
+State transition owned:
+repository knowledge scattered across README, Issues, branches, and PRs
+→ indexed Agent-readable integration state and delivery graph
+```
+
+It changes no runtime, public schema, evaluator, security gate, or verification code. Therefore its legitimate state transition is:
+
+```text
+traceability documentation absent/incomplete
+→ traceability documentation implemented
+```
+
+It must not be used to upgrade Browser, Android, OpenShell, Cloudflare, or ranking evidence states.
 
 ## Planned Android Git Town-compatible stack
 
@@ -281,13 +304,14 @@ Maintain this table in README and this document:
 | Stack | Slice | Parent | Branch | Issue | PR | Head SHA | State | Verification | Merge SHA |
 |---|---|---|---|---:|---:|---|---|---|---|
 | Browser-27 | combined B1–B8 | `main` | `agent/27-browser-playwright-harness` | 27 | 29 | `c58cbef0...` | actual Draft | workflows `action_required`; local evidence recorded in Issue | — |
+| Docs-index | integration/state/index | `main` | `agent/docs-integration-state-machine-index` | — | 30 | resolve from PR metadata | actual Draft | documentation metadata review only | — |
 | Android-28 | A1 contract | `main` | `agent/28-android-contract` | 28 | — | — | planned | — | — |
 | Android-28 | A2 runner | A1 | `agent/28-android-runner` | 28 | — | — | planned | — | — |
 | Android-28 | A3 evidence | A2 | `agent/28-android-evidence` | 28 | — | — | planned | — | — |
 | Android-28 | A4 scripted fixtures | A3 | `agent/28-android-scripted-fixtures` | 28 | — | — | planned | — | — |
 | Android-28 | A5 emulator CI | A4 | `agent/28-android-emulator-ci` | 28 | — | — | planned | — | — |
 
-Use full SHA values in PR bodies and the integration ledger. The abbreviated SHA in this table is display-only.
+Use full SHA values in PR bodies and the integration ledger. The abbreviated SHA in this table is display-only. A self-referential documentation PR resolves its exact head from PR metadata rather than embedding a SHA that changes when the ledger is updated.
 
 ## Documentation update rule
 
