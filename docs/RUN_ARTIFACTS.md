@@ -2,42 +2,39 @@
 
 ## Status
 
-This increment adds a cross-domain evidence derivation layer on top of the existing:
-
-```text
-HarnessPlan
-+ EvidenceBundle
-+ HarnessVerdict
-```
-
-The output is a digest-addressed `RunArtifactBundle` containing:
+This layer derives cross-domain, digest-addressed artifacts from:
 
 ```text
 EvaluatorAuthority
-+ EvidenceGraph
-+ ReplayManifest
-+ LogicalTrace
-+ OutcomeScorecard
++ HarnessPlan
++ EvidenceBundle
++ HarnessVerdict
+        │
+        ▼
+RunArtifactBundle
+├── EvidenceGraph
+├── ReplayManifest
+├── LogicalTrace
+└── OutcomeScorecard
 ```
 
-The implementation is deterministic and covered by a standalone local test suite. It does not claim live OpenTelemetry export, cryptographic attestation, exact replay without a captured snapshot, or GitHub Actions verification while repository jobs are blocked by the account billing/spending-limit state.
+The implementation is deterministic and verified by the repository unit and integration workflows. It does not claim cryptographic attestation, live OpenTelemetry transport, or exact replay without a captured runtime snapshot.
 
-## Problem being solved
+## Problem
 
-A Skill package is an untrusted supply-chain artifact. A package-supplied `harness.yaml`, test command, assertion, or natural-language success statement cannot become authoritative merely because it exists.
+A Skill package is an untrusted executable supply-chain artifact. A package-supplied `harness.yaml`, test command, assertion, or natural-language success statement does not become authoritative merely because it exists.
 
-The prior Harness Kernel bound a manifest to a plan and a verdict. This increment makes the authority behind that evaluator explicit:
+The evaluator authority must be supplied outside the Skill package and pinned to immutable content:
 
 ```text
 Trusted operator / evaluator repository
             │
             ▼
-EvaluatorAuthority sidecar
-            │
-            ├── immutable evaluator commit or digest
-            ├── evaluator artifact digest
-            ├── authorized manifest digest
-            └── trust basis
+EvaluatorAuthority
+├── immutable evaluator reference
+├── evaluator artifact digest
+├── authorized manifest digest
+└── trust basis
             │
             ▼
 HarnessPlan → EvidenceBundle → HarnessVerdict
@@ -46,29 +43,29 @@ HarnessPlan → EvidenceBundle → HarnessVerdict
 RunArtifactBundle
 ```
 
-The authority sidecar must be supplied outside the untrusted Skill package. The builder validates it; the builder does not discover or infer trust from popularity, repository ownership, or package claims.
+The builder validates authority and continuity. It does not infer trust from popularity, repository ownership, stars, downloads, or model claims.
 
 ## Trust boundaries
 
 ### Trusted
 
-- operator-supplied `EvaluatorAuthority` sidecar;
-- the Run Artifact builder and content-addressed store;
-- the existing Harness Kernel digest chain;
+- operator-supplied `EvaluatorAuthority`;
+- Harness Kernel and Run Artifact builder code;
+- persisted plan, evidence, and verdict inputs whose digests validate;
 - runtime collector attestations under `runtime_metadata.evidence_contract`;
-- verifier and security-gate output preserved in `HarnessVerdict`.
+- verifier and security-gate results preserved in `HarnessVerdict`.
 
 ### Untrusted
 
 - Skill package content;
-- package-supplied harness claims;
+- package-supplied evaluator claims;
 - model, agent, tool, browser, device, network, and document output;
 - empty `EvidenceBundle` defaults without collector attestation;
-- a receipt digest presented as if it were a cryptographic signature.
+- a content digest presented as if it were a signature.
 
 ## Evaluator authority
 
-Example shape:
+Example:
 
 ```json
 {
@@ -84,7 +81,7 @@ Example shape:
 }
 ```
 
-Accepted immutable reference forms are deliberately narrow:
+Accepted immutable references are deliberately narrow:
 
 ```text
 40-character lowercase Git commit SHA
@@ -93,20 +90,18 @@ sha256:<64 lowercase hex>
 git:<40 lowercase hex>
 ```
 
-Mutable names such as `main`, `master`, `HEAD`, `latest`, `*`, and `unknown` fail closed.
+Mutable values such as `main`, `master`, `HEAD`, `latest`, `*`, and `unknown` fail closed. `manifest_digest` must exactly match the manifest compiled into the `HarnessPlan`.
 
-`manifest_digest` must exactly match the digest compiled into the `HarnessPlan`. This makes evaluator ownership explicit for commands such as Coding Harness `version_command` and `test_commands`.
-
-The authority digest detects mutation. It is not a signature. A later attestation layer should sign the authority, plan, evidence, and verdict with a key unavailable to the evaluated sandbox.
+The authority digest detects mutation. It is not a cryptographic signature. A later attestation layer must sign the authority and bundle with an identity unavailable to the evaluated sandbox.
 
 ## Digest and continuity validation
 
-Before deriving any artifact, the builder validates:
+Before deriving artifacts, the builder validates:
 
 ```text
+authority.authority_digest
 plan.plan_digest
 verdict.verdict_digest
-authority.authority_digest
 ```
 
 It then checks continuity across:
@@ -122,14 +117,14 @@ runtime_backend
 
 Additional checks include:
 
-- immutable Skill reference;
+- immutable Skill provenance;
 - internal runtime-backend consistency;
 - evidence run/provenance/runtime continuity;
-- verdict failed-check list and status consistency;
+- verdict failed-check and status consistency;
 - failed security gate presence in failed checks;
-- High/Critical finding cannot coexist with a passing security gate.
+- High/Critical findings cannot coexist with a passing security gate.
 
-A stale or modified plan/verdict is rejected before graph or score generation.
+A stale or modified plan or verdict is rejected before graph or score generation.
 
 ## Evidence Graph
 
@@ -149,7 +144,7 @@ security findings
 HarnessVerdict
 ```
 
-Representative relationships:
+Representative edges:
 
 ```text
 EvaluatorAuthority ──authorizes──────────▶ HarnessPlan
@@ -162,13 +157,20 @@ VerificationCheck ───supports────────────▶ Harne
 SecurityFinding ─────constrains──────────▶ HarnessVerdict
 ```
 
-Every node and edge has a deterministic ID. Graph validation rejects duplicate node/edge IDs and dangling references.
+Graph IDs are deterministic. Validation rejects duplicate node or edge IDs and dangling structural references.
 
-Raw stdout and stderr are not copied into graph attributes. Their graph nodes contain only digest, byte count, and empty-state metadata. Other evidence objects are represented by payload digest and channel/index metadata, limiting accidental duplication of sensitive payloads.
+Source evidence linking is also fail-closed:
+
+- duplicate `source_evidence_id` values are rejected because they make a claim ambiguous;
+- verifier `evidence_ids` must resolve to exactly one evidence object;
+- passing verdicts cannot contain findings that reference unknown evidence;
+- failed security runs may retain an explicit `unresolved_evidence_reference` node so diagnostic artifacts are not lost, but they remain non-rank-eligible.
+
+Raw stdout and stderr are not copied into graph attributes. Their nodes contain only SHA-256, byte count, and empty-state metadata. Other evidence objects are represented by payload digest and channel/index metadata.
 
 ## Mandatory evidence coverage
 
-Scorecard evidence coverage is calculated only from trusted collector attestation:
+Coverage is calculated only from trusted collector attestation:
 
 ```json
 {
@@ -181,19 +183,13 @@ Scorecard evidence coverage is calculated only from trusted collector attestatio
 }
 ```
 
-A default empty field is not evidence. For example:
+A default empty field is not evidence. For example, `{"stderr": ""}` counts only when `stderr` appears in the trusted `captured` list.
 
-```json
-{"stderr": ""}
-```
-
-counts only when `stderr` is present in the trusted `captured` list.
-
-This rule applies across Coding, Browser, Android, Desktop, SRE, Documents, Voice, Robotics, and future adapters.
+This rule applies to Coding, Browser, Android, Desktop, SRE, Documents, Voice, Robotics, and future adapters.
 
 ## Replay Manifest
 
-Replay classification is intentionally conservative.
+Replay classification is conservative.
 
 ### Exact
 
@@ -204,22 +200,22 @@ runtime_capabilities.snapshot_restore = true
 captured immutable snapshot digest
 runtime image pinned to SHA-256
 immutable Skill provenance
-evaluator authority pinned to immutable commit/digest
+immutable evaluator authority
 ```
 
 ### Partial
 
-Used when the immutable task/evaluator configuration is available but a snapshot or exact runtime image is missing.
+Used when immutable task/evaluator configuration exists but snapshot or exact runtime image evidence is incomplete.
 
 ### None
 
-Used when a required runtime reference remains mutable. Mutable evaluator and Skill references are rejected earlier rather than classified as replayable.
+Used when a required runtime reference remains mutable. Mutable evaluator and Skill references are rejected earlier.
 
-A runtime claiming snapshot support without a captured snapshot digest cannot receive `exact` classification.
+Snapshot capability alone is never sufficient for `exact`.
 
 ## Logical trace envelope
 
-The bundle includes a deterministic logical trace with spans for:
+The bundle includes deterministic logical spans for:
 
 ```text
 authority.resolve
@@ -229,17 +225,17 @@ harness.verify
 run-artifacts.build
 ```
 
-Trace and span IDs are derived from content digests. The schema contains no start time, end time, timestamp, or duration fields.
+Trace and span IDs derive from content digests. Timing is explicit:
 
 ```json
 {"timing_state": "not-captured"}
 ```
 
-This is an export-ready semantic envelope, not evidence that OpenTelemetry or OpenInference collectors were active. A later exporter can add real timing and transport receipts without changing the logical identity chain.
+No start time, end time, timestamp, or duration is fabricated. A later OpenTelemetry/OpenInference exporter may add real timing receipts without changing logical trace identity.
 
 ## Outcome Scorecard
 
-Policy version:
+Policy:
 
 ```text
 evidence-first-v1
@@ -254,7 +250,7 @@ verdict outcome
 security gate
 replay class
 rank eligibility
-explicit Agent / Model / Runtime / Skill / Harness confounders
+Skill / Agent / Model / Runtime / Harness confounders
 diagnostic score
 ```
 
@@ -267,8 +263,6 @@ Diagnostic score:
 + 10 exact replay / 5 partial replay / 0 no replay
 ```
 
-This score is diagnostic, not proof of correctness.
-
 Non-compensable rules:
 
 ```text
@@ -278,11 +272,11 @@ missing mandatory evidence                 → rank_eligible = false
 any failed verifier                        → rank_eligible = false
 ```
 
-A high quality score can never compensate for a security failure or missing mandatory evidence.
+The score is diagnostic, not proof of correctness.
 
 ## CLI
 
-### Create an authority sidecar
+### Create authority
 
 ```bash
 skill-native-run-artifacts create-authority \
@@ -290,13 +284,13 @@ skill-native-run-artifacts create-authority \
   --kind repository \
   --trust-basis repository-pinned \
   --source-url https://github.com/ed3c/Skill.md-native \
-  --commit-or-digest <40-char-commit-sha> \
+  --commit-or-digest <immutable-ref> \
   --manifest-digest <64-char-manifest-digest> \
-  --evaluator-digest <64-char-evaluator-artifact-digest> \
+  --evaluator-digest <64-char-evaluator-digest> \
   --output /tmp/authority.json
 ```
 
-### Build and persist run artifacts
+### Build and persist
 
 ```bash
 skill-native-run-artifacts build \
@@ -307,7 +301,7 @@ skill-native-run-artifacts build \
   --output /tmp/run-artifacts
 ```
 
-Output layout:
+Output:
 
 ```text
 /tmp/run-artifacts/<bundle-digest>/
@@ -319,50 +313,61 @@ Output layout:
 └── run-artifact-bundle.json
 ```
 
-The build command exits with status 2 when the bundle is valid but not rank eligible. Artifacts are still persisted for diagnosis.
+A valid but non-rank-eligible build persists diagnostics and exits with status 2.
 
-### Export JSON Schemas
+### Export schemas
 
 ```bash
 skill-native-run-artifacts export-schemas /tmp/run-artifact-schemas
 ```
 
-## Deterministic verification
+## Verification
+
+Repository CI executes:
 
 ```bash
-PYTHONPATH=src python -m unittest tests.test_run_artifacts -v
+python -m unittest discover -s tests -v
+skill-native-run-artifacts export-schemas /tmp/run-artifact-schemas
+# committed/generated schema diff
+# deterministic fixture build and artifact-count checks
 ```
 
-The suite covers:
+The focused suites cover:
 
-- deterministic digests;
+- deterministic digests and JSON round-trip;
 - graph referential integrity;
-- mutable authority rejection;
-- authority/manifest mismatch;
-- plan and verdict tampering;
+- duplicate and unknown source evidence references;
+- unresolved-reference diagnostics for failed security runs;
+- mutable authority rejection and authority/manifest mismatch;
+- stale plan and verdict rejection;
 - missing collector attestation;
 - non-compensable security failure;
-- severe finding hidden behind a passing gate;
 - exact replay requirements;
-- logical trace timing boundaries;
+- no fabricated timing;
 - nested artifact tampering;
-- content-addressed persistence;
-- schema export.
+- content-addressed persistence and schema export.
+
+For PR #22 head `4a506b2daa9a072d40e661ddcff2ae33e5c410f8`:
+
+```text
+unit workflow #95        success
+integration workflow #22 success
+```
 
 ## Verification vocabulary
 
-- **implemented**: code, schemas, examples, and deterministic local tests exist.
-- **integration-verified**: persisted artifacts were produced from an external adapter or service.
-- **runtime-verified**: the pinned artifact ran in the declared isolated runtime and all required assertions passed.
+- **implemented**: code, schemas, examples, and deterministic tests exist;
+- **integration-verified**: an external adapter or service produced persisted evidence;
+- **runtime-verified**: the pinned artifact ran in the declared isolated runtime and all required assertions passed;
 - **cryptographically attested**: a trusted signing identity covered the relevant digests.
 
-This increment is implemented and locally deterministic-tested. It is not cryptographically attested and does not claim a GitHub Actions pass while Actions jobs cannot start because of the account billing/spending-limit block.
+This increment is implemented and CI-verified. It is not yet cryptographically attested and does not claim live OpenTelemetry/OpenInference export.
 
 ## Follow-on work
 
 1. Sign evaluator authority and Run Artifact Bundles with short-lived workload identity.
-2. Publish append-only transparency-log entries for authority and bundle digests.
+2. Publish authority and bundle digests to an append-only transparency log.
 3. Export logical spans through OpenTelemetry/OpenInference with real timing receipts.
 4. Attach mutation-tested verifier-strength evidence.
-5. Add Browser and Android domain artifacts under the same graph, replay, trace, and scorecard contracts.
+5. Add Browser and Android adapters under the same graph, replay, trace, and scorecard contracts.
 6. Add Temporal/Dagger orchestration without changing evidence semantics.
