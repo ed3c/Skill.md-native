@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import asdict, dataclass
 from enum import Enum
@@ -8,15 +9,10 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from .evidence import (
-    EvidenceStore,
-    attach_run_receipts,
-    canonical_digest,
-)
+from .evidence import EvidenceStore, attach_run_receipts, canonical_digest
 from .harness_adapters import DomainAdapterRegistry
 from .harness_contract import (
     BudgetContract,
-    EvidenceKind,
     HarnessContractError,
     HarnessManifest,
     HarnessPlan,
@@ -37,7 +33,7 @@ from .runtime import (
 from .security import evaluate_security
 
 
-_HARNESS_SUPPLIED_EVIDENCE = frozenset({"inference"})
+_KERNEL_SUPPLIED_EVIDENCE = frozenset({"inference"})
 
 
 @dataclass(frozen=True)
@@ -101,7 +97,8 @@ class HarnessKernel:
             effective_evidence = set(evidence_profile)
         except ValueError as exc:
             raise HarnessContractError(str(exc)) from exc
-        effective_evidence.update(_HARNESS_SUPPLIED_EVIDENCE)
+        effective_evidence.update(_KERNEL_SUPPLIED_EVIDENCE)
+        effective_evidence.update(adapter.evidence_kinds)
 
         missing_capabilities = [
             capability.value
@@ -147,6 +144,16 @@ class HarnessKernel:
         command = adapter.compile_command(manifest, spec)
         if not command:
             raise HarnessContractError("domain adapter compiled an empty command")
+        stdin = adapter.compile_stdin(manifest, spec)
+        if stdin is not None and not effective_capabilities.stdin_stream:
+            raise HarnessContractError(
+                "domain adapter requires stdin streaming but the runtime does not support it"
+            )
+        stdin_digest = (
+            hashlib.sha256(stdin.encode("utf-8")).hexdigest()
+            if stdin is not None
+            else None
+        )
 
         manifest_payload = manifest.model_dump(mode="json")
         plan_payload: dict[str, Any] = {
@@ -162,6 +169,7 @@ class HarnessKernel:
             "runtime_capabilities": asdict(effective_capabilities),
             "run_spec": spec,
             "command": command,
+            "stdin_digest": stdin_digest,
             "required_evidence": manifest.evidence.required,
             "checks": manifest.verification.checks,
             "policy_digest": canonical_digest(policy.model_dump(mode="json")),
@@ -186,18 +194,32 @@ class HarnessKernel:
                 f"runtime adapter backend {runtime.backend.value!r} does not match RunSpec "
                 f"backend {spec.runtime.backend.value!r}"
             )
+        adapter = self.registry.require(manifest.execution.adapter)
         plan = self.compile(
             manifest,
             spec,
             capabilities=runtime.capabilities,
             available_evidence=runtime.evidence_kinds,
         )
+        stdin = adapter.compile_stdin(manifest, spec)
+        observed_stdin_digest = (
+            hashlib.sha256(stdin.encode("utf-8")).hexdigest()
+            if stdin is not None
+            else None
+        )
+        if observed_stdin_digest != plan.stdin_digest:
+            raise HarnessContractError("domain adapter stdin changed after plan compilation")
+
         sandbox_id = runtime.prepare(spec)
         try:
-            execution_id = runtime.execute(sandbox_id, plan.command)
-            evidence = attach_run_receipts(
-                runtime.collect(spec.run_id, execution_id), ledger
+            execution_id = runtime.execute(sandbox_id, plan.command, stdin=stdin)
+            raw_evidence = runtime.collect(spec.run_id, execution_id)
+            normalized_evidence = adapter.normalize_evidence(
+                manifest,
+                plan,
+                raw_evidence,
             )
+            evidence = attach_run_receipts(normalized_evidence, ledger)
         finally:
             runtime.destroy(sandbox_id)
 
@@ -273,6 +295,43 @@ class HarnessKernel:
             )
         )
 
+        command_matches = any(
+            record.get("requested_argv", record.get("argv")) == plan.command
+            for record in evidence.commands
+        )
+        checks.append(
+            VerificationResult(
+                id="command-continuity",
+                kind="command",
+                passed=command_matches,
+                message=(
+                    "runtime evidence preserves the planned command"
+                    if command_matches
+                    else "runtime evidence does not preserve the planned command"
+                ),
+                details={"planned_command_digest": canonical_digest(plan.command)},
+            )
+        )
+
+        if plan.stdin_digest is not None:
+            input_matches = any(
+                record.get("stdin_digest") == plan.stdin_digest
+                for record in evidence.commands
+            )
+            checks.append(
+                VerificationResult(
+                    id="input-continuity",
+                    kind="input",
+                    passed=input_matches,
+                    message=(
+                        "runtime evidence preserves the planned stdin digest"
+                        if input_matches
+                        else "runtime evidence does not preserve the planned stdin digest"
+                    ),
+                    details={"planned_stdin_digest": plan.stdin_digest},
+                )
+            )
+
         for kind in manifest.evidence.required:
             present = evidence_present(evidence, kind)
             checks.append(
@@ -288,6 +347,9 @@ class HarnessKernel:
                     details={"evidence": kind.value},
                 )
             )
+
+        adapter = self.registry.require(plan.adapter)
+        checks.extend(adapter.verify_evidence(manifest, plan, evidence))
 
         for verifier in manifest.verification.checks:
             checks.append(evaluate_verifier(verifier, evidence))

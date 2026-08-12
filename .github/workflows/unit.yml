@@ -21,6 +21,12 @@ jobs:
         run: python -m pip install -e .
       - name: Unit tests
         run: python -m unittest discover -s tests -v
+      - name: Verify deterministic Coding Agent Harness
+        run: |
+          python -m unittest \
+            tests.test_coding_agent \
+            tests.test_runtime_harness_controllers \
+            -v
       - name: Compile smoke policy
         run: skill-native compile-openshell-policy examples/run.openshell.yaml > /tmp/openshell-policy.yaml
       - name: Materialize adversarial fixtures
@@ -29,12 +35,17 @@ jobs:
         run: |
           skill-native export-harness-schemas /tmp/harness-schemas
           diff -ru schemas /tmp/harness-schemas
-      - name: Validate and compile Harness fixture
+      - name: Validate and compile Harness fixtures
         run: |
           skill-native validate-harness examples/harnesses/coding/harness.yaml > /tmp/harness-manifest.json
           skill-native plan-harness \
             examples/harnesses/coding/harness.yaml \
             examples/harnesses/coding/run.fake.yaml > /tmp/harness-plan.json
+          skill-native validate-harness \
+            examples/harnesses/coding-agent/harness.yaml > /tmp/coding-agent-manifest.json
+          skill-native plan-harness \
+            examples/harnesses/coding-agent/harness.yaml \
+            examples/harnesses/coding-agent/run.fake.yaml > /tmp/coding-agent-plan.json
       - name: Run deterministic Harness fixture
         run: |
           skill-native run-harness-fake \

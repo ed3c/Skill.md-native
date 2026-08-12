@@ -118,3 +118,7 @@ class EvidenceBundle(BaseModel):
     runtime_metadata: dict[str, Any] = Field(default_factory=dict)
     policy: dict[str, Any] = Field(default_factory=dict)
     ocsf_events: list[dict[str, Any]] = Field(default_factory=list)
+    coding_receipt: dict[str, Any] = Field(default_factory=dict)
+    agent_events: list[dict[str, Any]] = Field(default_factory=list)
+    workspace_diff: dict[str, Any] = Field(default_factory=dict)
+    test_results: list[dict[str, Any]] = Field(default_factory=list)
