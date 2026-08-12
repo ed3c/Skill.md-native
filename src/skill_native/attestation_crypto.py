@@ -88,23 +88,44 @@ def generate_keypair(
         encoding=serialization.Encoding.PEM,
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     )
-    _write_key(private_key_path, private_bytes, mode=0o600)
-    _write_key(public_key_path, public_bytes, mode=0o644)
+    _write_key(
+        private_key_path,
+        private_bytes,
+        mode=0o600,
+        overwrite=overwrite,
+    )
+    _write_key(
+        public_key_path,
+        public_bytes,
+        mode=0o644,
+        overwrite=overwrite,
+    )
     return key_id_for_public_key(public_key)
 
 
 def load_private_key(path: Path) -> Ed25519PrivateKey:
-    if path.is_symlink():
-        raise AttestationError("refusing to load a private key through a symlink")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
     try:
-        if os.name == "posix" and path.stat().st_mode & 0o077:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise AttestationError(f"cannot open Ed25519 private key: {path}") from exc
+    try:
+        stat = os.fstat(descriptor)
+        if os.name == "posix" and stat.st_mode & 0o077:
             raise AttestationError(
                 "private key permissions must not grant group or other access"
             )
-        value = serialization.load_pem_private_key(path.read_bytes(), password=None)
-    except AttestationError:
-        raise
-    except (OSError, ValueError, TypeError) as exc:
+        with os.fdopen(descriptor, "rb") as handle:
+            descriptor = -1
+            payload = handle.read()
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    try:
+        value = serialization.load_pem_private_key(payload, password=None)
+    except (ValueError, TypeError) as exc:
         raise AttestationError(f"cannot load Ed25519 private key: {path}") from exc
     if not isinstance(value, Ed25519PrivateKey):
         raise AttestationError("private key is not Ed25519")
@@ -312,14 +333,24 @@ def _validate_bundle(
         raise AttestationError("Run Artifact Bundle failed digest/continuity validation") from exc
 
 
-def _write_key(path: Path, payload: bytes, *, mode: int) -> None:
+def _write_key(
+    path: Path,
+    payload: bytes,
+    *,
+    mode: int,
+    overwrite: bool,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink():
         raise AttestationError("refusing to write a key through a symlink")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    flags = os.O_WRONLY | os.O_CREAT
+    flags |= os.O_TRUNC if overwrite else os.O_EXCL
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
-    descriptor = os.open(path, flags, mode)
+    try:
+        descriptor = os.open(path, flags, mode)
+    except OSError as exc:
+        raise AttestationError(f"cannot create key file: {path}") from exc
     try:
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(payload)
