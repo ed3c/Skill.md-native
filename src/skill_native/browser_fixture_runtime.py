@@ -33,7 +33,7 @@ class LocalBrowserFixtureRuntime(RuntimeAdapter):
         persistent_filesystem=False,
         gpu=False,
         network_telemetry=False,
-        stdin_stream=False,
+        stdin_stream=True,
     )
 
     def __init__(self, workspace: Path) -> None:
@@ -53,14 +53,13 @@ class LocalBrowserFixtureRuntime(RuntimeAdapter):
         *,
         stdin: str | None = None,
     ) -> str:
-        if stdin is not None:
-            raise ValueError("local browser fixture runtime does not accept stdin")
         record = self._runs[sandbox_id]
         spec: RunSpec = record["spec"]
         execution_id = f"{sandbox_id}:exec:{len(record['executions'])}"
         process = subprocess.run(
             command,
             cwd=self.workspace,
+            input=stdin,
             capture_output=True,
             text=True,
             timeout=spec.limits.timeout_seconds,
@@ -68,6 +67,11 @@ class LocalBrowserFixtureRuntime(RuntimeAdapter):
         )
         record["executions"][execution_id] = {
             "argv": list(command),
+            "stdin_digest": (
+                hashlib.sha256(stdin.encode("utf-8")).hexdigest()
+                if stdin is not None
+                else None
+            ),
             "returncode": process.returncode,
             "stdout": process.stdout,
             "stderr": process.stderr,
@@ -90,7 +94,7 @@ class LocalBrowserFixtureRuntime(RuntimeAdapter):
                     "execution_id": execution_id,
                     "argv": execution["argv"],
                     "requested_argv": execution["argv"],
-                    "stdin_digest": None,
+                    "stdin_digest": execution["stdin_digest"],
                     "exit_code": execution["returncode"],
                 }
             ],
