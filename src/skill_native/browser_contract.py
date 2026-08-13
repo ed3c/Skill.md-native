@@ -152,6 +152,8 @@ class BrowserContract(_StrictModel):
     @model_validator(mode="after")
     def validate_contract(self) -> "BrowserContract":
         normalized = [_normalize_origin(value) for value in self.allowed_origins]
+        if self.allowed_origins != normalized:
+            raise ValueError("allowed_origins must use canonical origin spelling")
         if normalized != sorted(set(normalized)):
             raise ValueError("allowed_origins must be normalized, sorted, and unique")
         if _unsafe_relative_path(self.artifact_root):
