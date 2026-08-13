@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
+import stat as stat_module
 from pathlib import Path
 from typing import Iterable
 
@@ -20,6 +22,8 @@ from .android_contract import (
     WaitForPackageAction,
     WaitForUiTextAction,
 )
+
+_SAFE_SERIAL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
 class AndroidAdbError(ValueError):
@@ -42,7 +46,11 @@ class AdbDevice(BaseModel):
     attributes: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def reject_duplicate_or_unsafe_attribute_keys(self) -> "AdbDevice":
+    def validate_untrusted_device_line(self) -> "AdbDevice":
+        if not _SAFE_SERIAL.fullmatch(self.serial):
+            raise ValueError("ADB device serial contains unsafe characters")
+        if any(ch.isspace() for ch in self.state) or len(self.state) > 64:
+            raise ValueError("ADB device state must be a simple token")
         for key, value in self.attributes.items():
             if not key or any(ch.isspace() for ch in key) or ":" in key:
                 raise ValueError("ADB device attribute keys must be simple tokens")
@@ -52,41 +60,53 @@ class AdbDevice(BaseModel):
 
 
 def attest_adb_binary(path: Path, *, reported_version: str) -> AdbBinaryIdentity:
-    """Attest a local ADB executable without following a symlink substitution."""
+    """Attest one opened executable object and refuse symlink substitution."""
 
-    if not reported_version or len(reported_version) > 256:
+    version = reported_version.strip()
+    if not version or len(version) > 256:
         raise AndroidAdbError("ADB reported version is missing or too long")
-    if path.is_symlink():
-        raise AndroidAdbError("ADB executable must not be a symlink")
+
+    flags = os.O_RDONLY
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if not nofollow:
+        raise AndroidAdbError("platform cannot enforce O_NOFOLLOW for ADB attestation")
+    flags |= nofollow
+
     try:
-        stat = path.stat()
+        fd = os.open(path, flags)
     except FileNotFoundError as exc:
         raise AndroidAdbError("ADB executable does not exist") from exc
-    if not path.is_file():
-        raise AndroidAdbError("ADB executable must be a regular file")
-    if not os.access(path, os.X_OK):
-        raise AndroidAdbError("ADB executable is not executable")
+    except OSError as exc:
+        raise AndroidAdbError("ADB executable could not be opened without following links") from exc
 
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while chunk := handle.read(1024 * 1024):
+    try:
+        opened = os.fstat(fd)
+        if not stat_module.S_ISREG(opened.st_mode):
+            raise AndroidAdbError("ADB executable must be a regular file")
+        if opened.st_mode & 0o111 == 0:
+            raise AndroidAdbError("ADB executable is not executable")
+
+        digest = hashlib.sha256()
+        while True:
+            chunk = os.read(fd, 1024 * 1024)
+            if not chunk:
+                break
             digest.update(chunk)
 
-    # Re-stat after hashing so a replacement during the read is detectable.
-    after = path.stat()
-    if (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns) != (
-        after.st_dev,
-        after.st_ino,
-        after.st_size,
-        after.st_mtime_ns,
-    ):
-        raise AndroidAdbError("ADB executable changed while being attested")
+        after = os.fstat(fd)
+        if (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns) != (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+        ):
+            raise AndroidAdbError("ADB executable changed while being attested")
+    finally:
+        os.close(fd)
 
-    return AdbBinaryIdentity(
-        path=str(path.resolve()),
-        version=reported_version.strip(),
-        sha256=digest.hexdigest(),
-    )
+    # Resolve only after attesting the opened object; identity remains the opened inode + digest.
+    resolved = path.resolve(strict=True)
+    return AdbBinaryIdentity(path=str(resolved), version=version, sha256=digest.hexdigest())
 
 
 def parse_adb_devices(output: str) -> list[AdbDevice]:
@@ -122,6 +142,8 @@ def parse_adb_devices(output: str) -> list[AdbDevice]:
 def select_online_device(devices: Iterable[AdbDevice], *, expected_serial: str | None) -> AdbDevice:
     candidates = list(devices)
     if expected_serial is not None:
+        if not _SAFE_SERIAL.fullmatch(expected_serial):
+            raise AndroidAdbError("expected Android device serial contains unsafe characters")
         matches = [device for device in candidates if device.serial == expected_serial]
         if len(matches) != 1:
             raise AndroidAdbError("expected Android device serial is not uniquely present")
@@ -141,8 +163,12 @@ def select_online_device(devices: Iterable[AdbDevice], *, expected_serial: str |
 
 
 def compile_adb_action_argv(*, adb_path: str, serial: str, action: AndroidAction) -> list[str]:
-    """Compile a bounded Android action into argv. No generic shell primitive exists."""
+    """Compile a bounded Android action into argv. No generic command primitive exists."""
 
+    if not adb_path:
+        raise AndroidAdbError("ADB path is required")
+    if not _SAFE_SERIAL.fullmatch(serial):
+        raise AndroidAdbError("Android device serial contains unsafe characters")
     prefix = [adb_path, "-s", serial]
 
     if isinstance(action, StartActivityAction):
@@ -170,7 +196,6 @@ def compile_adb_action_argv(*, adb_path: str, serial: str, action: AndroidAction
             str(action.duration_ms),
         ]
     if isinstance(action, WaitAction):
-        # Wait is owned by the trusted runner and must never become a device-shell command.
         raise AndroidAdbError("wait actions are runner-local and have no ADB argv")
     if isinstance(action, WaitForPackageAction):
         return prefix + ["shell", "dumpsys", "window", "windows"]
