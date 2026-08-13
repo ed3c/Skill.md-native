@@ -32,6 +32,7 @@ class BrowserPlaywrightAdapter:
     runner_binary = "skill-native-browser-runner"
     evidence_kinds = frozenset(
         {
+            "network",
             "browser_receipt",
             "browser_events",
             "dom_snapshot",
@@ -194,7 +195,7 @@ class BrowserPlaywrightAdapter:
         )
         return mark_evidence_captured(
             normalized,
-            self.evidence_kinds.union({"network"}),
+            self.evidence_kinds,
         )
 
     def verify_evidence(
