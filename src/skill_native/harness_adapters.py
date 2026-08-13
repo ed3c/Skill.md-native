@@ -315,7 +315,15 @@ class DomainAdapterRegistry:
 
     @classmethod
     def defaults(cls) -> "DomainAdapterRegistry":
-        return cls([CodingCommandAdapter(), CodingAgentAdapter()])
+        from .browser_adapter import BrowserPlaywrightAdapter
+
+        return cls(
+            [
+                CodingCommandAdapter(),
+                CodingAgentAdapter(),
+                BrowserPlaywrightAdapter(),
+            ]
+        )
 
 
 def _command_context(spec: RunSpec, *, include_task: bool) -> dict[str, str]:

@@ -311,6 +311,10 @@ def _iter_evidence_objects(
         "ocsf_events",
         "agent_events",
         "test_results",
+        "browser_events",
+        "network_trace",
+        "screenshots",
+        "downloads",
     )
     singular_channels = (
         "exit_code",
@@ -323,6 +327,10 @@ def _iter_evidence_objects(
         "policy",
         "coding_receipt",
         "workspace_diff",
+        "browser_receipt",
+        "dom_snapshot",
+        "accessibility_snapshot",
+        "browser_assertions",
     )
     captured = _captured_evidence(evidence)
     for channel in list_channels:
