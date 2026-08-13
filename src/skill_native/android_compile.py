@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Literal
 
@@ -75,7 +76,7 @@ def android_runner_command() -> list[str]:
 
 
 def android_runner_stdin_digest(config: AndroidRunnerConfig) -> str:
-    return canonical_digest(encode_android_runner_stdin(config))
+    return hashlib.sha256(encode_android_runner_stdin(config).encode("utf-8")).hexdigest()
 
 
 __all__ = [
