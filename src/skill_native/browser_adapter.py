@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import stat
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,6 @@ from .browser_contract import (
     build_browser_runner_config,
     browser_action_plan_digest,
     browser_contract_digest,
-    encode_browser_runner_config,
     parse_browser_receipt,
 )
 from .evidence import canonical_digest, mark_evidence_captured
@@ -44,18 +44,19 @@ class BrowserPlaywrightAdapter:
     )
 
     def compile_command(self, manifest: HarnessManifest, spec: RunSpec) -> list[str]:
+        self._contract(manifest)
+        return [self.runner_binary, "--config-stdin"]
+
+    def compile_stdin(self, manifest: HarnessManifest, spec: RunSpec) -> str:
         config = build_browser_runner_config(
             run_id=spec.run_id,
             contract=self._contract(manifest),
         )
-        return [
-            self.runner_binary,
-            "--config-b64",
-            encode_browser_runner_config(config),
-        ]
-
-    def compile_stdin(self, manifest: HarnessManifest, spec: RunSpec) -> None:
-        return None
+        return json.dumps(
+            config.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
 
     def normalize_evidence(
         self,
@@ -72,6 +73,12 @@ class BrowserPlaywrightAdapter:
                 run_id=plan.run_id,
                 contract=contract,
             )
+            expected_stdin = json.dumps(
+                config.model_dump(mode="json"),
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            expected_stdin_digest = hashlib.sha256(expected_stdin.encode("utf-8")).hexdigest()
             mismatches: list[str] = []
             if receipt.run_id != plan.run_id:
                 mismatches.append("run_id")
@@ -81,6 +88,8 @@ class BrowserPlaywrightAdapter:
                 mismatches.append("contract_digest")
             if receipt.action_plan_digest != browser_action_plan_digest(contract.actions):
                 mismatches.append("action_plan_digest")
+            if plan.stdin_digest != expected_stdin_digest:
+                mismatches.append("stdin_digest")
             if receipt.driver != contract.driver:
                 mismatches.append("driver")
             if receipt.driver_version != contract.driver_version:
