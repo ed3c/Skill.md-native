@@ -1,192 +1,133 @@
 # Integration State Ledger
 
-> Canonical handoff snapshot for humans and coding agents. Read this file after [`AGENTS.md`](../AGENTS.md) and [`README.md`](../README.md), before planning or changing an integration.
+> Mutable handoff snapshot for humans and coding agents. Read after `AGENTS.md` and `README.md`. Re-check GitHub before relying on any status here.
 
 ## Snapshot identity
 
 | Field | Value |
 |---|---|
 | Repository | `ed3c/Skill.md-native` |
-| Snapshot date | 2026-08-12, Asia/Taipei |
+| Snapshot date | 2026-08-14, Asia/Taipei |
 | Default branch | `main` |
-| Verified `main` head | `032a933d15f3770b93be24aa9abfed98b9a2a898` |
-| Head feature | signed Run Artifact attestations and local transparency publication |
-| Open feature PR | #29, `agent/27-browser-playwright-harness` |
-| Open documentation PR | #30, `agent/docs-integration-state-machine-index` |
-| Repository-level Git Town config | **not detected** |
-
-This file is a snapshot, not an oracle. Before editing it, re-read GitHub Issues, PR metadata, branch heads, and workflow results. Never copy an old status forward merely because the code still exists.
+| Verified main head at snapshot | `49251371eddc36da8b4337eceef4575993ed1824` |
+| Main head capability | Browser hardened + Android bounded contract |
+| Active Android Issue | #28 |
+| Main-target Android PR | #37 |
+| Git Town repository config | not detected |
 
 ## Source-of-truth order
 
-When sources disagree, use this order:
-
-1. Persisted runtime or integration evidence linked to immutable artifact/runtime identity.
-2. Executed GitHub Actions jobs and their artifacts/logs.
-3. Merged code, schemas, tests, and exact commit history.
-4. Open PR head plus its executed checks.
-5. Canonical Issue checklist.
-6. Documentation prose.
-7. Agent memory or prior conversation summaries.
-
-An Issue checkbox or PR description is not proof that a job executed. A configured workflow is not a passing workflow. A local fixture is not account-backed runtime verification.
-
-## Delivery history on `main`
-
-| Layer | PR | Result on `main` | Evidence state |
-|---|---:|---|---|
-| Runtime evidence lab bootstrap | #7 | Ingestion, provenance, OpenShell/Cloudflare contracts, inference broker, security benchmark, compatibility/ranking MVP | implemented; public GitHub ingestion integration-verified; account-backed runtime gates remain open |
-| Cross-domain Harness Kernel | #17 | `HarnessManifest`, `HarnessPlan`, `HarnessVerdict`, capability/evidence profiles, fail-closed compiler | implemented and CI-verified |
-| Coding Agent Harness | #19 | `coding.agent.v1`, trusted runner, stdin task delivery, workspace/test receipt | implemented; no live model-backed claim |
-| Run Artifact Bundle | #22 | evaluator authority, Evidence Graph, Replay Manifest, Logical Trace, evidence-first scorecard | implemented and CI-verified |
-| Coding stdin backpressure hotfix | #26 | timeout begins immediately; stdin writer cannot block the trusted wrapper indefinitely | merged security hardening |
-| Attestation and transparency | #24 | canonical statement, DSSE Ed25519, verifier policy, hash-chain/Merkle log, inclusion receipt | implemented and CI-verified; local log is not a public witnessed log |
-
-The current `main` chain is therefore:
-
 ```text
-source/provenance
-→ Harness Kernel
-→ Coding domain receipt
-→ evaluator-authorized Run Artifact Bundle
-→ DSSE signature and verifier-owned policy
-→ local transparency inclusion receipt
+persisted runtime/integration evidence
+> executed GitHub Actions
+> merged commit history
+> current PR head/checks
+> canonical Issue
+> documentation
+> Agent memory
 ```
 
-## Current open work
+## Merged state
 
-### Browser Harness — Issue #27 / Draft PR #29
+| Capability | Trace | Evidence state |
+|---|---|---|
+| Cross-domain Harness Kernel | #17 | merged/CI established |
+| Coding Agent Harness | #19, #26 | merged/CI established |
+| Run Artifact Bundle / Evidence Graph | #22 | merged/CI established |
+| DSSE + transparency | #24 | merged/CI established |
+| Browser Playwright Harness | #29 | merged; deterministic local Browser integration lineage |
+| Browser contract/privacy hardening | #32 | merged; full CI green before merge |
+| Android bounded contract | #35 → `49251371...` | merged; current-main unit #133 + integration #54 succeeded before merge |
 
-| Field | State |
-|---|---|
-| Branch | `agent/27-browser-playwright-harness` |
-| Head | `c58cbef0ac5f21356ccf454cd1bf1c6396e0049d` |
-| Base | `main@032a933d15f3770b93be24aa9abfed98b9a2a898` |
-| PR state | open, Draft, mergeable |
-| Scope | `browser.playwright.v1`, deterministic action grammar, origin policy, trusted runner, Browser receipt, content-addressed artifacts, loopback Chromium fixture |
-| Workflow state at snapshot | `unit`, `integration`, and `schema-sync-pr` concluded `action_required`; no workflow jobs were returned for the unit run |
-| Allowed claim | implementation exists on the PR branch; Issue #27 records deterministic local Browser verification |
-| Forbidden claim | merged, GitHub Actions green, public-site verified, credentialed-site verified, hosted-browser verified, or isolated-runtime verified |
+## Android-28 active delivery state
 
-Files on PR #29 include Browser contract/runner/adapter/runtime modules, Browser schemas, loopback examples, tests, and schema-sync workflow changes. The PR does not change `README.md`, so documentation PR #30 remains independent.
+### A1 — bounded contract
 
-### Documentation state/index — Draft PR #30
+**Merged.** `src/skill_native/android_contract.py` is on main. It establishes typed bounded actions, device constraints, ADB version/SHA constraints, final assertions, artifact budgets, and deterministic contract/action digests.
 
-| Field | State |
-|---|---|
-| Branch | `agent/docs-integration-state-machine-index` |
-| Base | `main@032a933d15f3770b93be24aa9abfed98b9a2a898` |
-| PR state | open, Draft; exact current head and mergeability must be read from PR metadata |
-| Scope | root README topology/state/data-flow/stack index; Integration State, State Machine, Stacked Delivery, and docs indexes |
-| Establishes | documentation traceability only |
-| Does not establish | implementation, schema, CI, integration, runtime, Browser, or Android evidence state |
+It does **not** establish ADB execution, HarnessManifest registration, evidence capture, emulator verification, or physical-device verification.
 
-Because a document cannot contain its own final commit SHA without becoming self-referential, PR #30's exact head is intentionally resolved from GitHub metadata rather than hard-coded here.
+### A1b — compile boundary
 
-### Android Harness — Issue #28
+Stacked PR #36 established:
 
-State: **planned; no implementation PR at this snapshot**.
+```text
+AndroidContract
+→ AndroidRunnerConfig
+→ contract/action/config digest continuity
+→ canonical stdin
+→ byte-level stdin SHA-256
+→ fixed runner argv
+```
 
-Required initial adapter: `android.adb.v1` with a constrained ADB grammar, explicit device identity, trusted wrapper-owned stdout, content-addressed UI/device artifacts, receipt validation, scripted fixture evidence, and a separately classified emulator evidence level.
+Its head `1d32ea6f3dc9278645539729c9310efb3090026b` passed:
 
-Do not expose arbitrary `adb shell`, install/uninstall, root/remount, bootloader commands, or unrestricted file transfer through the manifest.
+- unit workflow #134;
+- integration workflow #55.
 
-## Environment-backed verification gates intentionally still open
+PR #36 merged into its parent feature branch, not directly into main. PR #37 now targets main to land the effective delta. PR #37 head is the same `1d9b85f...` and fresh main-target workflows succeeded:
 
-| Issue | Implemented portion | Missing evidence required before closing |
-|---:|---|---|
-| #1 OpenShell | adapter, policy compiler, OCSF/evidence controller, live workflow entrypoint | persisted real OpenShell benign, denied-network, L7, and runtime identity evidence |
-| #2 Inference broker | provider routing, budgets, receipt ledger, broker attachment | real OpenShell proof that brokered inference works while raw provider credentials remain unreadable |
-| #3 Cloudflare | Python controller, Worker bridge, Dynamic Worker contracts | real account cold/warm execution, denied egress, resource/storage evidence, credential non-exposure |
-| #5 adversarial benchmark | executable corpus, evaluator, security gate, hidden variants | detector recall/FPR measured from persisted real OpenShell/Cloudflare runs |
+- unit #136: success;
+- integration #56: success;
+- schema-sync: skipped by workflow condition.
 
-These are not code TODOs only. They are evidence-state gates. Do not close them from mocks, typechecks, merge status, or configured workflows.
+Until PR #37 is actually merged, do not say `android_compile.py` is on main.
+
+### Next slices
+
+```text
+A1c HarnessManifest + android.adb.v1 wiring
+→ A2a ADB binary/device/typed-argv primitives
+→ A2b bounded subprocess lifecycle
+→ A3 AndroidReceipt + artifact/EvidenceBundle integration
+→ A4 scripted fake-ADB verification
+→ A5 fixed emulator CI + persisted evidence
+→ A6 Appium/Maestro
+→ A7 Mobly/multi-device
+```
+
+## Historical/superseded Android lineage
+
+PRs #31, #34 and #33 preserve useful implementation/CI history but are not the active stack. Their parent ancestry predates Browser hotfix #32 and caused unrelated Browser regressions in merge-ref CI. Do not revive those branches as parents for new Android work.
+
+A hardened ADB-primitives prototype exists in historical branch lineage and includes the design intent for `O_NOFOLLOW` binary attestation, strict `adb devices -l` parsing, exact-online-device selection and typed argv compilation. Re-implement/rebase it only after the active parent is clean; do not claim it is merged.
+
+## Browser state
+
+Browser is merged, not open. The merged/hardened path includes canonical stdin-bound configuration, origin constraints, Browser evidence channels, artifact integrity, deterministic assertions, and explicit non-isolated fixture labeling. Public-site, credentialed-site, hosted-browser, or runtime-isolated verification still require their own evidence.
+
+## External evidence gates
+
+The following remain evidence-gated and must not be closed from mocks/configuration alone:
+
+- real OpenShell hostile-runtime evidence;
+- brokered inference credential-isolation evidence;
+- Cloudflare cold/warm/egress/resource evidence;
+- live detector recall/FPR evidence;
+- Android emulator/physical-device evidence.
 
 ## Verification vocabulary
 
-Use exactly these states where applicable:
-
 ```text
-planned
-  Requirement exists; implementation has not landed.
-
 implemented
-  Code, schemas, fixtures, and deterministic tests exist.
-
-content-addressed
-  Object and nested continuity digests validate.
-
-cryptographically-signed
-  An authorized key signed the exact canonical payload.
-
-policy-verified
-  Derived key identity and signed claims match verifier-owned policy.
-
-transparency-published
-  The policy-verified envelope has an inclusion receipt for a specific log prefix.
-
-integration-verified
-  A real external source/service produced persisted evidence.
-
-runtime-verified
-  The pinned artifact executed in the declared isolated runtime and satisfied required assertions.
-
-blocked-infrastructure
-  Required external account, runner, approval, billing, or service state prevented execution.
+CI-verified
+scripted-fixture-verified
+deterministic-local-integration-verified
+emulator-integration-verified
+physical-device-verified
+runtime-isolated-verified
 ```
 
-A state can coexist with another state. For example, a run may be content-addressed and signed but still fail task verification. Signing cannot upgrade a failed verdict.
-
-## Immediate requirements
-
-1. Keep `main` aligned with the exact merged truth above.
-2. Resolve PR #29's `action_required` workflow state before claiming hosted CI.
-3. Merge Browser only after its PR description, Issue #27, schemas, tests, and observed workflow evidence agree.
-4. Review and merge PR #30 only as documentation; do not infer a product evidence-state upgrade from it.
-5. Implement Android through atomic, independently reviewable stack slices described in [`STACKED_DELIVERY.md`](./STACKED_DELIVERY.md).
-6. Preserve the same authority → evidence → verdict → Run Artifact → attestation chain for every new domain.
-7. Persist external runtime evidence before upgrading Issues #1, #2, #3, or #5.
-8. Update this ledger whenever a PR merges, a branch is retargeted, or a verification state changes.
+Only claim the strongest state directly supported by persisted evidence.
 
 ## Agent handoff checklist
 
-Before coding:
+Before continuing work:
 
-```text
-[ ] Read AGENTS.md.
-[ ] Read README.md directory/state-machine map.
-[ ] Read this ledger.
-[ ] Read the relevant domain/trust document.
-[ ] Read the canonical Issue and current PR, if any.
-[ ] Confirm the exact base/head SHA and workflow state.
-[ ] Identify which verification state the change may legitimately establish.
-```
-
-Before publishing:
-
-```text
-[ ] Keep the PR atomic and independently testable.
-[ ] Update schemas and schema-drift checks when contracts change.
-[ ] Add failure-path and tamper regressions.
-[ ] Update the Issue checklist from observed evidence.
-[ ] Update README stack/index entries.
-[ ] Update this ledger with PR/branch/head/workflow evidence.
-[ ] State non-claims explicitly.
-```
-
-## Traceability key
-
-Every integration entry should be reconstructable from:
-
-```text
-Issue
-→ branch and parent branch
-→ PR and exact head SHA
-→ changed directories/files
-→ executed checks and artifacts
-→ merge commit
-→ verification-state transition
-→ documentation and schema version
-```
-
-When any link is absent, record it as absent rather than inferring it.
+1. Fetch current `main` SHA.
+2. Fetch Issue #28 and current Android PR metadata.
+3. Inspect workflow runs for the exact head SHA.
+4. Check whether PR #37 has merged; if yes, update this ledger immediately.
+5. Build the next terminal branch from the actual merged parent, not an old feature branch.
+6. Keep HarnessManifest wiring, ADB process execution, evidence normalization and emulator CI in separate trust-boundary slices.
+7. Update README + this ledger + `STACKED_DELIVERY.md` whenever topology changes.
