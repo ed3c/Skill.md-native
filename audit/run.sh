@@ -13,7 +13,7 @@ if [[ "${SKILL_NATIVE_AUDIT_BOOTSTRAP:-1}" == "1" ]]; then
     cd "${ROOT}"
     "${VENV}/bin/python" -m pip install -e '.[browser]'
   )
-  "${VENV}/bin/python" -m playwright install chromium
+  "${VENV}/bin/python" -m playwright install --with-deps chromium
   PYTHON_BIN="${VENV}/bin/python"
 fi
 

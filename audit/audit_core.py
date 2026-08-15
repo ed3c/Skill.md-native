@@ -81,7 +81,7 @@ class Check:
 class Audit:
     def __init__(self, output: Path, clean: bool) -> None:
         self.output = output.resolve()
-        if self.output in {ROOT.resolve(), Path.home().resolve(), Path("/")}:
+        if self.output in {ROOT.resolve(), Path.home().resolve(), Path("/")} or (self.output / ".git").exists():
             raise SystemExit(f"unsafe output path: {self.output}")
         if self.output.exists():
             if not clean:
@@ -258,6 +258,9 @@ def identity() -> tuple[dict[str, Any], dict[str, Any]]:
         "runner_os": os.environ.get("RUNNER_OS"),
         "runner_arch": os.environ.get("RUNNER_ARCH"),
         "docker_available": shutil.which("docker") is not None,
+        "docker_version": capture("docker", "--version"),
         "node_available": shutil.which("node") is not None,
+        "node_version": capture("node", "--version"),
+        "npm_version": capture("npm", "--version"),
     }
     return subject, environment
