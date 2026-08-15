@@ -1,192 +1,130 @@
 # Integration State Ledger
 
-> Canonical handoff snapshot for humans and coding agents. Read this file after [`AGENTS.md`](../AGENTS.md) and [`README.md`](../README.md), before planning or changing an integration.
+> Mutable handoff snapshot for 2026-08-16 Asia/Taipei. Read after `AGENTS.md` and `README.md`; resolve the current `main` SHA and exact workflow subject before relying on a state.
 
-## Snapshot identity
+## Convergence baseline
 
 | Field | Value |
 |---|---|
 | Repository | `ed3c/Skill.md-native` |
-| Snapshot date | 2026-08-12, Asia/Taipei |
 | Default branch | `main` |
-| Verified `main` head | `032a933d15f3770b93be24aa9abfed98b9a2a898` |
-| Head feature | signed Run Artifact attestations and local transparency publication |
-| Open feature PR | #29, `agent/27-browser-playwright-harness` |
-| Open documentation PR | #30, `agent/docs-integration-state-machine-index` |
-| Repository-level Git Town config | **not detected** |
+| Convergence base | `17eb098187d329b45a13954120319d32e25d8465` |
+| Base meaning | PR #43 capability-audit merge, preserving its evidence ancestry |
+| Git Town config | not detected; no Git Town commands are assumed |
+| Open Android authority | Issue #28 |
 
-This file is a snapshot, not an oracle. Before editing it, re-read GitHub Issues, PR metadata, branch heads, and workflow results. Never copy an old status forward merely because the code still exists.
-
-## Source-of-truth order
-
-When sources disagree, use this order:
-
-1. Persisted runtime or integration evidence linked to immutable artifact/runtime identity.
-2. Executed GitHub Actions jobs and their artifacts/logs.
-3. Merged code, schemas, tests, and exact commit history.
-4. Open PR head plus its executed checks.
-5. Canonical Issue checklist.
-6. Documentation prose.
-7. Agent memory or prior conversation summaries.
-
-An Issue checkbox or PR description is not proof that a job executed. A configured workflow is not a passing workflow. A local fixture is not account-backed runtime verification.
-
-## Delivery history on `main`
-
-| Layer | PR | Result on `main` | Evidence state |
-|---|---:|---|---|
-| Runtime evidence lab bootstrap | #7 | Ingestion, provenance, OpenShell/Cloudflare contracts, inference broker, security benchmark, compatibility/ranking MVP | implemented; public GitHub ingestion integration-verified; account-backed runtime gates remain open |
-| Cross-domain Harness Kernel | #17 | `HarnessManifest`, `HarnessPlan`, `HarnessVerdict`, capability/evidence profiles, fail-closed compiler | implemented and CI-verified |
-| Coding Agent Harness | #19 | `coding.agent.v1`, trusted runner, stdin task delivery, workspace/test receipt | implemented; no live model-backed claim |
-| Run Artifact Bundle | #22 | evaluator authority, Evidence Graph, Replay Manifest, Logical Trace, evidence-first scorecard | implemented and CI-verified |
-| Coding stdin backpressure hotfix | #26 | timeout begins immediately; stdin writer cannot block the trusted wrapper indefinitely | merged security hardening |
-| Attestation and transparency | #24 | canonical statement, DSSE Ed25519, verifier policy, hash-chain/Merkle log, inclusion receipt | implemented and CI-verified; local log is not a public witnessed log |
-
-The current `main` chain is therefore:
+## Evidence priority
 
 ```text
-source/provenance
-→ Harness Kernel
-→ Coding domain receipt
-→ evaluator-authorized Run Artifact Bundle
-→ DSSE signature and verifier-owned policy
-→ local transparency inclusion receipt
+persisted runtime/integration artifact
+> exact executed Actions subject and raw logs
+> merged code, contracts, and tests
+> current PR head and observed checks
+> canonical Issue acceptance contract
+> current documentation
+> Agent memory or conversational summary
 ```
 
-## Current open work
+A configured workflow, fixture, signature, branch, or prose statement cannot upgrade an unexecuted capability.
 
-### Browser Harness — Issue #27 / Draft PR #29
+## Merged and carried-forward capabilities
 
-| Field | State |
-|---|---|
-| Branch | `agent/27-browser-playwright-harness` |
-| Head | `c58cbef0ac5f21356ccf454cd1bf1c6396e0049d` |
-| Base | `main@032a933d15f3770b93be24aa9abfed98b9a2a898` |
-| PR state | open, Draft, mergeable |
-| Scope | `browser.playwright.v1`, deterministic action grammar, origin policy, trusted runner, Browser receipt, content-addressed artifacts, loopback Chromium fixture |
-| Workflow state at snapshot | `unit`, `integration`, and `schema-sync-pr` concluded `action_required`; no workflow jobs were returned for the unit run |
-| Allowed claim | implementation exists on the PR branch; Issue #27 records deterministic local Browser verification |
-| Forbidden claim | merged, GitHub Actions green, public-site verified, credentialed-site verified, hosted-browser verified, or isolated-runtime verified |
+- Cross-domain Harness Kernel, Coding Agent Harness, Run Artifact/Evidence Graph/replay/scorecard, DSSE/local transparency, Browser contract/runtime path, Android bounded contract, and Android canonical compile boundary are present on the convergence base.
+- PR #43 added an executable capability-audit contract. Its admitted exact-head run exercised the full Python suite with Chromium installed, public GitHub immutable ingestion, Cloudflare TypeScript contract checks, deterministic Harness/evidence/verdict/Run Artifact flow, local cryptographic verification, and a hardened generic Docker container with positive and negative controls.
+- That audit does not establish NVIDIA OpenShell, account-backed Cloudflare runtime, provider credential isolation, Android device execution, universal compatibility, production ranking, keyless identity, or publicly witnessed transparency.
 
-Files on PR #29 include Browser contract/runner/adapter/runtime modules, Browser schemas, loopback examples, tests, and schema-sync workflow changes. The PR does not change `README.md`, so documentation PR #30 remains independent.
+The machine-readable audit artifact and exact workflow subject outrank this ledger. See `audit/README.md` and `docs/audits/2026-08-15-capability-audit.md`.
 
-### Documentation state/index — Draft PR #30
+## Android current state
 
-| Field | State |
-|---|---|
-| Branch | `agent/docs-integration-state-machine-index` |
-| Base | `main@032a933d15f3770b93be24aa9abfed98b9a2a898` |
-| PR state | open, Draft; exact current head and mergeability must be read from PR metadata |
-| Scope | root README topology/state/data-flow/stack index; Integration State, State Machine, Stacked Delivery, and docs indexes |
-| Establishes | documentation traceability only |
-| Does not establish | implementation, schema, CI, integration, runtime, Browser, or Android evidence state |
+This convergence ports the useful portions of stale PRs #31 and #33 onto the current main lineage without rebasing or merging their obsolete ancestry.
 
-Because a document cannot contain its own final commit SHA without becoming self-referential, PR #30's exact head is intentionally resolved from GitHub metadata rather than hard-coded here.
+```text
+AndroidContract
+→ contract/action digests
+→ AndroidRunnerConfig
+→ config digest
+→ canonical stdin
+→ byte-level stdin SHA-256
+→ fixed runner argv
+→ ADB executable identity primitive
+→ bounded adb devices parser
+→ exact online-device selector
+→ typed action-to-argv compiler
+```
 
-### Android Harness — Issue #28
+Established state after the convergence head passes CI:
 
-State: **planned; no implementation PR at this snapshot**.
+```text
+bounded-contract-implemented
+canonical-compile-boundary-host-executed
+adb-primitives-unit-verified
+```
 
-Required initial adapter: `android.adb.v1` with a constrained ADB grammar, explicit device identity, trusted wrapper-owned stdout, content-addressed UI/device artifacts, receipt validation, scripted fixture evidence, and a separately classified emulator evidence level.
+Not established:
 
-Do not expose arbitrary `adb shell`, install/uninstall, root/remount, bootloader commands, or unrestricted file transfer through the manifest.
+- `android.adb.v1` registration in HarnessManifest/DomainAdapter registry;
+- trusted bounded subprocess lifecycle;
+- proof that the executed ADB object equals the attested object;
+- AndroidReceipt and artifact descriptors;
+- UI hierarchy/screenshot/logcat/package/window evidence normalization;
+- scripted fake-ADB HarnessVerdict;
+- emulator evidence;
+- physical-device evidence;
+- isolated Android runtime evidence.
 
-## Environment-backed verification gates intentionally still open
+Issue #28 therefore remains open.
 
-| Issue | Implemented portion | Missing evidence required before closing |
-|---:|---|---|
-| #1 OpenShell | adapter, policy compiler, OCSF/evidence controller, live workflow entrypoint | persisted real OpenShell benign, denied-network, L7, and runtime identity evidence |
-| #2 Inference broker | provider routing, budgets, receipt ledger, broker attachment | real OpenShell proof that brokered inference works while raw provider credentials remain unreadable |
-| #3 Cloudflare | Python controller, Worker bridge, Dynamic Worker contracts | real account cold/warm execution, denied egress, resource/storage evidence, credential non-exposure |
-| #5 adversarial benchmark | executable corpus, evaluator, security gate, hidden variants | detector recall/FPR measured from persisted real OpenShell/Cloudflare runs |
+## Active terminal slices
 
-These are not code TODOs only. They are evidence-state gates. Do not close them from mocks, typechecks, merge status, or configured workflows.
+```text
+A1c HarnessManifest + android.adb.v1 wiring
+→ A2b bounded subprocess lifecycle
+→ A3 AndroidReceipt + artifact/EvidenceBundle integrity
+→ A4 scripted fake-ADB verification
+→ A5 fixed emulator CI + persisted evidence
+→ A6 optional Appium/Maestro
+→ A7 optional Mobly/multi-device
+```
+
+## Historical PR reconciliation
+
+- PR #34 was closed because PR #37 already landed the same compile-owned files on current `main`.
+- PRs #31 and #33 remain historical sources only; their useful contract tests, documentation, and ADB primitives are reconstructed on the convergence head.
+- PRs #39 and #41 remain historical documentation-stack sources only; their public documentation and community-health files are reconstructed on the convergence head while current `AGENTS.md` and PR #43 audit code remain authoritative.
+- After the convergence PR lands, #31, #33, #39, and #41 should be closed as superseded without additional CI.
+
+## External evidence gates
+
+Do not close or upgrade these from mocks, configuration, or owner authority alone:
+
+- OpenShell hostile-runtime and OCSF evidence;
+- brokered provider credential-isolation evidence;
+- account-backed Cloudflare cold/warm/egress/resource evidence;
+- detector recall/FPR evidence;
+- Android scripted/emulator/physical-device evidence;
+- production release or deployment evidence.
 
 ## Verification vocabulary
 
-Use exactly these states where applicable:
-
 ```text
-planned
-  Requirement exists; implementation has not landed.
-
 implemented
-  Code, schemas, fixtures, and deterministic tests exist.
-
-content-addressed
-  Object and nested continuity digests validate.
-
-cryptographically-signed
-  An authorized key signed the exact canonical payload.
-
-policy-verified
-  Derived key identity and signed claims match verifier-owned policy.
-
-transparency-published
-  The policy-verified envelope has an inclusion receipt for a specific log prefix.
-
-integration-verified
-  A real external source/service produced persisted evidence.
-
-runtime-verified
-  The pinned artifact executed in the declared isolated runtime and satisfied required assertions.
-
-blocked-infrastructure
-  Required external account, runner, approval, billing, or service state prevented execution.
+unit-verified
+CI-verified
+scripted-fixture-verified
+deterministic-local-integration-verified
+emulator-integration-verified
+physical-device-verified
+runtime-isolated-verified
+production-verified
 ```
 
-A state can coexist with another state. For example, a run may be content-addressed and signed but still fail task verification. Signing cannot upgrade a failed verdict.
+No weaker state implies a stronger state.
 
-## Immediate requirements
+## Agent handoff
 
-1. Keep `main` aligned with the exact merged truth above.
-2. Resolve PR #29's `action_required` workflow state before claiming hosted CI.
-3. Merge Browser only after its PR description, Issue #27, schemas, tests, and observed workflow evidence agree.
-4. Review and merge PR #30 only as documentation; do not infer a product evidence-state upgrade from it.
-5. Implement Android through atomic, independently reviewable stack slices described in [`STACKED_DELIVERY.md`](./STACKED_DELIVERY.md).
-6. Preserve the same authority → evidence → verdict → Run Artifact → attestation chain for every new domain.
-7. Persist external runtime evidence before upgrading Issues #1, #2, #3, or #5.
-8. Update this ledger whenever a PR merges, a branch is retargeted, or a verification state changes.
-
-## Agent handoff checklist
-
-Before coding:
-
-```text
-[ ] Read AGENTS.md.
-[ ] Read README.md directory/state-machine map.
-[ ] Read this ledger.
-[ ] Read the relevant domain/trust document.
-[ ] Read the canonical Issue and current PR, if any.
-[ ] Confirm the exact base/head SHA and workflow state.
-[ ] Identify which verification state the change may legitimately establish.
-```
-
-Before publishing:
-
-```text
-[ ] Keep the PR atomic and independently testable.
-[ ] Update schemas and schema-drift checks when contracts change.
-[ ] Add failure-path and tamper regressions.
-[ ] Update the Issue checklist from observed evidence.
-[ ] Update README stack/index entries.
-[ ] Update this ledger with PR/branch/head/workflow evidence.
-[ ] State non-claims explicitly.
-```
-
-## Traceability key
-
-Every integration entry should be reconstructable from:
-
-```text
-Issue
-→ branch and parent branch
-→ PR and exact head SHA
-→ changed directories/files
-→ executed checks and artifacts
-→ merge commit
-→ verification-state transition
-→ documentation and schema version
-```
-
-When any link is absent, record it as absent rather than inferring it.
+1. Fetch current `main`, Issue #28, and the latest exact audit artifact.
+2. Start new Android work from actual `main`, never from PRs #31/#33/#34.
+3. Keep manifest wiring, process lifecycle, receipt/artifacts, scripted fixture, emulator, and physical device as separate trust-boundary slices.
+4. Record parent SHA, exact head, workflow run, persisted artifacts, established state, and explicit non-claims for every PR.
+5. Do not rerun failed CI without changing the owned root cause, and do not weaken gates to obtain green status.

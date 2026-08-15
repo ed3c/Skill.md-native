@@ -1,46 +1,54 @@
-# Documentation Index
+<!-- i18n-key: DOCS_INDEX; locale: en; reviewed: 2026-08-16 -->
+[English](README.md) · [繁體中文](README.zh-TW.md)
 
-Use this page to choose the smallest authoritative document for the task. Do not read one domain document and infer repository-wide state from it.
+# Skill.md-native documentation
 
-## Mandatory Agent read order
+Start with the [project README](../README.md). It explains the supported entrypoints, maturity, evidence boundaries, quick start, and non-goals.
 
-1. [`../AGENTS.md`](../AGENTS.md) — repository policy, trust model, evidence rules, and working constraints.
-2. [`../README.md`](../README.md) — current topology, state-machine summary, data flow, delivery and traceability index.
-3. [`INTEGRATION_STATE.md`](./INTEGRATION_STATE.md) — exact merged/open/planned/blocked snapshot.
-4. The relevant architecture/domain document below.
-5. [`STACKED_DELIVERY.md`](./STACKED_DELIVERY.md) before creating branches or PRs.
+## Evidence and current state
 
-## Core architecture
+- [Integration state](INTEGRATION_STATE.md) — Current domain/evidence ledger and supersession map.
+- [Executable capability audit](../audit/README.md) — One-command exact-subject evidence packet.
+- [2026-08-15 capability audit interpretation](audits/2026-08-15-capability-audit.md) — Baseline findings and explicit external gaps.
+- [2026-08-16 convergence ledger](CONVERGENCE_2026-08-16.md) — Current-main reconstruction, CI economy, merge admission, and supersession contract.
+- [Historical stacked delivery](STACKED_DELIVERY.md) — Original branch, PR, slice, and handoff history retained without rewriting.
 
-| Document | Authority |
-|---|---|
-| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | overall product architecture and trust boundaries |
-| [`EVALUATION_CONTRACT.md`](./EVALUATION_CONTRACT.md) | evaluation/evidence semantics |
-| [`HARNESS_KERNEL.md`](./HARNESS_KERNEL.md) | manifest, plan, runtime capability/evidence, verification contracts |
-| [`STATE_MACHINES.md`](./STATE_MACHINES.md) | directory ownership, transitions, and end-to-end data flow |
+## Technical documentation
 
-## Domain execution
+- [Architecture](ARCHITECTURE.md) — System and trust-boundary architecture.
+- [State Machines](STATE_MACHINES.md) — Ingestion, compilation, runtime, verdict, attestation, and delivery states.
+- [Harness Kernel](HARNESS_KERNEL.md) — Compiler, capability, evidence, and verifier contracts.
+- [Coding Agent Harness](CODING_AGENT_HARNESS.md) — Bounded coding-agent task and receipt model.
+- [Android Harness](ANDROID_HARNESS.md) — Contract, ADB primitives, remaining runner/evidence gates, and verification levels.
+- [Run Artifacts](RUN_ARTIFACTS.md) — Evidence Graph, replay, trace, and scorecard.
+- [Attestations](ATTESTATIONS.md) — DSSE, key policy, and transparency publication.
+- [Evaluation contract](EVALUATION_CONTRACT.md) — Outcome and security evaluation rules.
 
-| Document | State |
-|---|---|
-| [`CODING_AGENT_HARNESS.md`](./CODING_AGENT_HARNESS.md) | merged implementation for `coding.agent.v1` |
-| Browser documentation | currently lives on Draft PR #29 branch; not merged on the snapshot main |
-| Android documentation | planned by Issue #28; no implementation document on main yet |
+## Project and community documentation
 
-## Post-run trust and publication
+- [Documentation language policy](I18N.md)
+- [Open-source readiness checklist](OPEN_SOURCE_CHECKLIST.md)
+- [Contributing](../CONTRIBUTING.md)
+- [Security](../SECURITY.md)
+- [Support](../SUPPORT.md)
+- [Governance](../GOVERNANCE.md)
+- [Maintainers](../MAINTAINERS.md)
+- [Code of Conduct](../CODE_OF_CONDUCT.md)
+- [Changelog](../CHANGELOG.md)
+- [Release process](../RELEASING.md)
 
-| Document | Authority |
-|---|---|
-| [`RUN_ARTIFACTS.md`](./RUN_ARTIFACTS.md) | evaluator authority, Evidence Graph, Replay Manifest, Logical Trace, scorecard, bundle |
-| [`ATTESTATIONS.md`](./ATTESTATIONS.md) | canonical statement, DSSE Ed25519, verifier policy, local transparency log and receipts |
+## Source-of-truth order
 
-## Current delivery state
+When documents disagree, use this order:
 
-| Document | Use |
-|---|---|
-| [`INTEGRATION_STATE.md`](./INTEGRATION_STATE.md) | merged/open/planned/blocked ledger and immediate requirements |
-| [`STACKED_DELIVERY.md`](./STACKED_DELIVERY.md) | branch parentage, Stack PR slices, Git Town detection, merge/retarget protocol |
+```text
+persisted exact-subject runtime/integration artifact
+> executed workflow and raw logs
+> merged code, contracts, tests, and repository policy
+> current implementation/status ledger
+> architecture and runbooks
+> README summaries
+> Issues, Pull Requests, and conversational summaries
+```
 
-## Evidence rule
-
-Documentation records what was observed; it does not create evidence. When prose conflicts with executed workflow artifacts, persisted runtime evidence, or immutable code history, update the prose rather than weakening the evidence standard.
+An open Pull Request, configured workflow, example, fixture, signature, or prose statement cannot upgrade the implementation or verification state of `main` by itself.
