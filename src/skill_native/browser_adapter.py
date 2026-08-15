@@ -43,6 +43,15 @@ class BrowserPlaywrightAdapter:
             "browser_assertions",
         }
     )
+    receipt_evidence_kinds = frozenset(
+        {
+            "network",
+            "browser_receipt",
+            "browser_events",
+            "network_trace",
+            "browser_assertions",
+        }
+    )
 
     def compile_command(self, manifest: HarnessManifest, spec: RunSpec) -> list[str]:
         self._contract(manifest)
@@ -79,7 +88,9 @@ class BrowserPlaywrightAdapter:
                 sort_keys=True,
                 separators=(",", ":"),
             )
-            expected_stdin_digest = hashlib.sha256(expected_stdin.encode("utf-8")).hexdigest()
+            expected_stdin_digest = hashlib.sha256(
+                expected_stdin.encode("utf-8")
+            ).hexdigest()
             mismatches: list[str] = []
             if receipt.run_id != plan.run_id:
                 mismatches.append("run_id")
@@ -87,7 +98,9 @@ class BrowserPlaywrightAdapter:
                 mismatches.append("config_digest")
             if receipt.contract_digest != browser_contract_digest(contract):
                 mismatches.append("contract_digest")
-            if receipt.action_plan_digest != browser_action_plan_digest(contract.actions):
+            if receipt.action_plan_digest != browser_action_plan_digest(
+                contract.actions
+            ):
                 mismatches.append("action_plan_digest")
             if plan.stdin_digest != expected_stdin_digest:
                 mismatches.append("stdin_digest")
@@ -110,26 +123,18 @@ class BrowserPlaywrightAdapter:
                     "browser receipt does not preserve the compiled plan: "
                     + ", ".join(mismatches)
                 )
-            artifact_root, total_artifact_bytes = _validate_artifacts(
-                contract,
-                plan.run_id,
-                receipt.artifacts,
-                evidence.runtime_metadata,
-            )
-            artifacts_by_kind: dict[str, list[dict[str, Any]]] = {}
-            for artifact in receipt.artifacts:
-                artifacts_by_kind.setdefault(artifact.kind, []).append(
-                    artifact.model_dump(mode="json")
-                )
-            dom_snapshot = _single_artifact(artifacts_by_kind.get("dom", []))
-            accessibility_snapshot = _single_artifact(
-                artifacts_by_kind.get("aria", [])
-            )
+
             normalized_network = []
             for index, event in enumerate(receipt.network_events):
                 payload = {"sequence": index, **event}
                 normalized_network.append(
                     {**payload, "evidence_id": canonical_digest(payload)}
+                )
+
+            artifacts_by_kind: dict[str, list[dict[str, Any]]] = {}
+            for artifact in receipt.artifacts:
+                artifacts_by_kind.setdefault(artifact.kind, []).append(
+                    artifact.model_dump(mode="json")
                 )
         except Exception as exc:  # noqa: BLE001 - malformed runner output becomes evidence
             assertions.update(
@@ -149,15 +154,48 @@ class BrowserPlaywrightAdapter:
                 update={"assertions": assertions, "runtime_metadata": metadata}
             )
 
-        wrapper_exit_consistent = (receipt.outcome == "pass") == (evidence.exit_code == 0)
+        artifact_error: str | None = None
+        artifact_root: Path | None = None
+        total_artifact_bytes = 0
+        try:
+            artifact_root, total_artifact_bytes = _validate_artifacts(
+                contract,
+                plan.run_id,
+                receipt.artifacts,
+                evidence.runtime_metadata,
+                require_complete=receipt.outcome == "pass",
+            )
+        except Exception as exc:  # preserve bound failure evidence; fail the artifact gate
+            artifact_error = f"{type(exc).__name__}: {exc}"
+
+        if artifact_error is None:
+            dom_snapshot = _single_artifact(artifacts_by_kind.get("dom", []))
+            accessibility_snapshot = _single_artifact(
+                artifacts_by_kind.get("aria", [])
+            )
+            screenshots = artifacts_by_kind.get("screenshot", [])
+            downloads = artifacts_by_kind.get("download", [])
+        else:
+            dom_snapshot = {}
+            accessibility_snapshot = {}
+            screenshots = []
+            downloads = []
+
+        wrapper_exit_consistent = (receipt.outcome == "pass") == (
+            evidence.exit_code == 0
+        )
         assertions.update(
             {
                 "browser_receipt_valid": True,
                 "browser_outcome_pass": receipt.outcome == "pass",
-                "browser_policy_pass": all(receipt.policy_checks.values()),
-                "browser_artifacts_valid": True,
+                "browser_policy_pass": (
+                    all(receipt.policy_checks.values()) and not receipt.violations
+                ),
+                "browser_artifacts_valid": artifact_error is None,
                 "browser_wrapper_exit_consistent": wrapper_exit_consistent,
-                "browser_driver_verified": receipt.driver_version == contract.driver_version,
+                "browser_driver_verified": (
+                    receipt.driver_version == contract.driver_version
+                ),
                 "browser_assertions_passed": all(receipt.assertions.values()),
             }
         )
@@ -173,8 +211,9 @@ class BrowserPlaywrightAdapter:
             "outcome": receipt.outcome,
             "final_url": receipt.final_url,
             "page_count": receipt.page_count,
-            "artifact_root": str(artifact_root),
+            "artifact_root": str(artifact_root) if artifact_root is not None else None,
             "artifact_bytes": total_artifact_bytes,
+            "artifact_validation_error": artifact_error,
         }
         normalized = evidence.model_copy(
             update={
@@ -188,15 +227,22 @@ class BrowserPlaywrightAdapter:
                 "dom_snapshot": dom_snapshot,
                 "accessibility_snapshot": accessibility_snapshot,
                 "network_trace": list(receipt.network_events),
-                "screenshots": artifacts_by_kind.get("screenshot", []),
-                "downloads": artifacts_by_kind.get("download", []),
+                "screenshots": screenshots,
+                "downloads": downloads,
                 "browser_assertions": dict(receipt.assertions),
             }
         )
-        return mark_evidence_captured(
-            normalized,
-            self.evidence_kinds,
-        )
+        captured = set(self.receipt_evidence_kinds)
+        if artifact_error is None:
+            if dom_snapshot:
+                captured.add("dom_snapshot")
+            if accessibility_snapshot:
+                captured.add("accessibility_snapshot")
+            if screenshots:
+                captured.add("screenshots")
+            if downloads:
+                captured.add("downloads")
+        return mark_evidence_captured(normalized, captured)
 
     def verify_evidence(
         self,
@@ -249,7 +295,9 @@ class BrowserPlaywrightAdapter:
     @staticmethod
     def _contract(manifest: HarnessManifest) -> BrowserContract:
         if manifest.browser is None:
-            raise HarnessContractError("browser.playwright.v1 requires a browser contract")
+            raise HarnessContractError(
+                "browser.playwright.v1 requires a browser contract"
+            )
         return manifest.browser
 
 
@@ -258,6 +306,8 @@ def _validate_artifacts(
     run_id: str,
     artifacts: list[BrowserArtifact],
     runtime_metadata: dict[str, Any],
+    *,
+    require_complete: bool,
 ) -> tuple[Path, int]:
     workspace_value = runtime_metadata.get("workspace_root")
     if not isinstance(workspace_value, str) or not workspace_value:
@@ -276,7 +326,9 @@ def _validate_artifacts(
     seen: set[str] = set()
     for artifact in artifacts:
         if artifact.path in seen:
-            raise BrowserContractError("browser receipt contains duplicate artifact paths")
+            raise BrowserContractError(
+                "browser receipt contains duplicate artifact paths"
+            )
         seen.add(artifact.path)
         path = (root / artifact.path).resolve()
         try:
@@ -287,22 +339,41 @@ def _validate_artifacts(
         if path.is_symlink() or not stat.S_ISREG(info.st_mode):
             raise BrowserContractError("browser artifact is not a regular file")
         if info.st_size != artifact.bytes:
-            raise BrowserContractError("browser artifact size does not match receipt")
+            raise BrowserContractError(
+                "browser artifact size does not match receipt"
+            )
         if _file_digest(path) != artifact.sha256:
-            raise BrowserContractError("browser artifact digest does not match receipt")
-        if artifact.kind == "download" and artifact.bytes > contract.max_download_bytes:
+            raise BrowserContractError(
+                "browser artifact digest does not match receipt"
+            )
+        if (
+            artifact.kind == "download"
+            and artifact.bytes > contract.max_download_bytes
+        ):
             raise BrowserContractError("browser download exceeds byte budget")
         total += artifact.bytes
     if total > contract.max_artifact_bytes:
         raise BrowserContractError("browser artifacts exceed total byte budget")
-    if contract.capture_dom and not any(value.kind == "dom" for value in artifacts):
-        raise BrowserContractError("browser receipt is missing mandatory DOM artifact")
-    if contract.capture_aria and not any(value.kind == "aria" for value in artifacts):
-        raise BrowserContractError("browser receipt is missing mandatory ARIA artifact")
-    if contract.final_screenshot and not any(
-        value.kind == "screenshot" for value in artifacts
+    if (
+        require_complete
+        and contract.capture_dom
+        and not any(value.kind == "dom" for value in artifacts)
     ):
-        raise BrowserContractError("browser receipt is missing mandatory screenshot")
+        raise BrowserContractError("browser receipt is missing mandatory DOM artifact")
+    if (
+        require_complete
+        and contract.capture_aria
+        and not any(value.kind == "aria" for value in artifacts)
+    ):
+        raise BrowserContractError("browser receipt is missing mandatory ARIA artifact")
+    if (
+        require_complete
+        and contract.final_screenshot
+        and not any(value.kind == "screenshot" for value in artifacts)
+    ):
+        raise BrowserContractError(
+            "browser receipt is missing mandatory screenshot"
+        )
     return root, total
 
 
@@ -316,7 +387,9 @@ def _file_digest(path: Path) -> str:
 
 def _single_artifact(values: list[dict[str, Any]]) -> dict[str, Any]:
     if len(values) > 1:
-        raise BrowserContractError("browser receipt contains duplicate singular artifacts")
+        raise BrowserContractError(
+            "browser receipt contains duplicate singular artifacts"
+        )
     return values[0] if values else {}
 
 
