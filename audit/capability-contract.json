@@ -1,0 +1,177 @@
+{
+  "schema_version": "skill-native-capability-contract/v1",
+  "states": [
+    "PASS",
+    "FAIL",
+    "ABSENT",
+    "NOT_IMPLEMENTED",
+    "NOT_EXERCISED",
+    "BLOCKED_INFRASTRUCTURE",
+    "SKIPPED_BY_POLICY"
+  ],
+  "evidence_levels": [
+    "static-inspection",
+    "host-execution",
+    "deterministic-fixture",
+    "external-integration",
+    "runtime-substrate",
+    "production"
+  ],
+  "capabilities": [
+    {
+      "id": "package.cli.installable",
+      "claim": "The package installs and exposes the documented skill-native CLI.",
+      "required_in_full": true,
+      "minimum_evidence_level": "host-execution"
+    },
+    {
+      "id": "environment.dependency.snapshot",
+      "claim": "The exact installed Python dependency set is persisted with the receipt.",
+      "required_in_full": true,
+      "minimum_evidence_level": "host-execution"
+    },
+    {
+      "id": "tests.full_suite",
+      "claim": "The complete Python test suite executes on the bound subject.",
+      "required_in_full": true,
+      "minimum_evidence_level": "host-execution"
+    },
+    {
+      "id": "android.compile.contract",
+      "claim": "The merged Android contract and compile boundary execute their deterministic tests.",
+      "required_in_full": true,
+      "minimum_evidence_level": "deterministic-fixture"
+    },
+    {
+      "id": "cloudflare.contracts.typecheck",
+      "claim": "The Cloudflare Sandbox Worker and Dynamic Worker TypeScript contracts install and typecheck on the bound subject.",
+      "required_in_full": true,
+      "minimum_evidence_level": "host-execution",
+      "notes": [
+        "Typecheck proves contract compilation only; it is not account-backed Cloudflare runtime evidence."
+      ]
+    },
+    {
+      "id": "schemas.deterministic.sync",
+      "claim": "Generated public schemas exactly match the committed schemas.",
+      "required_in_full": true,
+      "minimum_evidence_level": "deterministic-fixture"
+    },
+    {
+      "id": "security.fixtures.materialized",
+      "claim": "The adversarial fixture corpus can be materialized through the public CLI.",
+      "required_in_full": true,
+      "minimum_evidence_level": "deterministic-fixture"
+    },
+    {
+      "id": "harness.coding.fake",
+      "claim": "The Coding Harness validates, compiles, executes under FakeRuntime, and emits persisted evidence and verdict objects.",
+      "required_in_full": true,
+      "minimum_evidence_level": "deterministic-fixture",
+      "notes": [
+        "FakeRuntime evidence never establishes sandbox isolation."
+      ]
+    },
+    {
+      "id": "run_artifact.bundle",
+      "claim": "Evaluator-authorized Run Artifact Bundle construction executes and persists its graph, replay, trace, and scorecard objects.",
+      "required_in_full": true,
+      "minimum_evidence_level": "deterministic-fixture"
+    },
+    {
+      "id": "attestation.ephemeral_local_key",
+      "claim": "The exact Run Artifact Bundle can be signed, policy-verified, appended to the local log, and receipt-verified using an ephemeral local Ed25519 key bound to the audit commit metadata.",
+      "required_in_full": true,
+      "minimum_evidence_level": "host-execution",
+      "notes": [
+        "This is not GitHub OIDC/keyless signing.",
+        "The private key must not be published."
+      ]
+    },
+    {
+      "id": "browser.chromium.loopback",
+      "claim": "A real Chromium process executes the deterministic Browser Harness and persists its result, evidence, verdict, and artifacts.",
+      "required_in_full": true,
+      "minimum_evidence_level": "runtime-substrate",
+      "notes": [
+        "The loopback fixture declares isolation=none."
+      ]
+    },
+    {
+      "id": "integration.github.ingestion",
+      "claim": "A public mutable GitHub Skill reference resolves to an immutable commit and persisted provenance.",
+      "required_in_full": true,
+      "minimum_evidence_level": "external-integration"
+    },
+    {
+      "id": "sandbox.container.execution",
+      "claim": "The packaged CLI executes inside a content-addressed hardened Linux container with network disabled and a read-only root filesystem.",
+      "required_in_full": true,
+      "minimum_evidence_level": "runtime-substrate"
+    },
+    {
+      "id": "sandbox.container.tmpfs_write",
+      "claim": "The sandbox positive control can write only to the declared ephemeral tmpfs.",
+      "required_in_full": true,
+      "minimum_evidence_level": "runtime-substrate"
+    },
+    {
+      "id": "sandbox.container.egress_denied",
+      "claim": "A real outbound socket probe is denied by the container network boundary.",
+      "required_in_full": true,
+      "minimum_evidence_level": "runtime-substrate"
+    },
+    {
+      "id": "sandbox.container.rootfs_write_denied",
+      "claim": "A real write probe against the container root filesystem is denied.",
+      "required_in_full": true,
+      "minimum_evidence_level": "runtime-substrate"
+    },
+    {
+      "id": "runtime.openshell.live",
+      "claim": "The exact subject executes on a real NVIDIA OpenShell runtime and persists required OCSF/policy/runtime evidence.",
+      "required_in_full": false,
+      "minimum_evidence_level": "runtime-substrate"
+    },
+    {
+      "id": "runtime.cloudflare.live",
+      "claim": "The exact subject executes on an admitted Cloudflare Sandbox or Dynamic Worker endpoint and persists cold/warm, egress, resource, and credential-isolation evidence.",
+      "required_in_full": false,
+      "minimum_evidence_level": "runtime-substrate"
+    },
+    {
+      "id": "inference.provider.live",
+      "claim": "A real admitted inference provider or local endpoint produces run-linked token, latency, quota, cost, and failure receipts.",
+      "required_in_full": false,
+      "minimum_evidence_level": "external-integration"
+    },
+    {
+      "id": "android.adb.runtime",
+      "claim": "A trusted ADB runner executes against a scripted ADB, emulator, or physical device and persists independently classified Android evidence.",
+      "required_in_full": false,
+      "minimum_evidence_level": "runtime-substrate"
+    },
+    {
+      "id": "ranking.multicell.runtime_samples",
+      "claim": "Ranking is computed from adequate persisted Skill × Agent × Runtime × Model live sample cells with uncertainty.",
+      "required_in_full": false,
+      "minimum_evidence_level": "runtime-substrate"
+    },
+    {
+      "id": "transparency.public_witness",
+      "claim": "The signed statement is included in an independently witnessed public transparency service.",
+      "required_in_full": false,
+      "minimum_evidence_level": "production"
+    }
+  ],
+  "non_claims": [
+    "A passing FakeRuntime run is not sandbox verification.",
+    "A GitHub-hosted Docker container is not NVIDIA OpenShell and does not close Issue #1.",
+    "A local deterministic Chromium loopback is not an isolated, public-site, credentialed-site, or production browser claim.",
+    "Cloudflare TypeScript typechecks or deployment configuration are not account-backed Cloudflare runtime evidence.",
+    "An ephemeral local Ed25519 key is not GitHub OIDC/keyless identity.",
+    "A local hash-chain/Merkle log is not an independently witnessed public transparency log.",
+    "Android contract/compile tests are not ADB, emulator, or physical-device execution.",
+    "One successful run is not adequate multi-cell ranking evidence."
+  ]
+}

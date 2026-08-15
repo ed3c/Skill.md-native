@@ -20,7 +20,7 @@ browser = [
 [project.scripts]
 skill-native = "skill_native.cli:main"
 skill-native-coding-runner = "skill_native.coding_agent:main"
-skill-native-browser-runner = "skill_native.browser_runner:main"
+skill-native-browser-runner = "skill_native.browser_entrypoint:main"
 skill-native-run-artifacts = "skill_native.run_artifacts:main"
 skill-native-attest = "skill_native.attestation_cli:main"
 
