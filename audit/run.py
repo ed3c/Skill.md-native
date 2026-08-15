@@ -89,10 +89,30 @@ def main() -> int:
             common = ["docker", "run", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "128", "--memory", "512m", "--cpus", "1", "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m", "--user", "65534:65534", "--env", "PYTHONDONTWRITEBYTECODE=1"]
             audit.run("docker-harness", "sandbox.container.execution", "Harness in hardened container", [*common, "--entrypoint", "/bin/sh", image, "-lc", "skill-native run-harness-fake examples/harnesses/coding/harness.yaml examples/harnesses/coding/run.fake.yaml --evidence-dir /tmp/evidence --verdict-dir /tmp/verdicts >/tmp/result.json && test \"$(find /tmp/evidence -type f | wc -l)\" -eq 1 && test \"$(find /tmp/verdicts -type f | wc -l)\" -eq 1 && cat /tmp/result.json"], stdout_artifact="artifacts/docker-hardened-harness-result.json", runtime={"kind": "real-linux-container", "image_id": image, "network": "none", "rootfs": "read-only", "capabilities": "all-dropped"}, notes=["Generic Docker boundary, not OpenShell."])
             audit.run("docker-tmpfs", "sandbox.container.tmpfs_write", "Writable declared tmpfs", [*common, "--entrypoint", "python", image, "-c", "from pathlib import Path; p=Path('/tmp/allowed'); p.write_text('ok'); assert p.read_text()=='ok'"], runtime={"kind": "real-linux-container", "image_id": image})
-            audit.run("docker-egress", "sandbox.container.egress_denied", "Denied outbound socket", [*common, "--entrypoint", "python", image, "-c", "import socket; socket.create_connection(('1.1.1.1',53),2)"], expectation="nonzero", runtime={"kind": "real-linux-container", "image_id": image, "network": "none"}, notes=["PASS requires a real attempted connection to exit non-zero."])
+            egress_probe = (
+                "import errno, json, socket\n"
+                "try:\n"
+                "    socket.create_connection(('1.1.1.1', 53), 2)\n"
+                "except OSError as exc:\n"
+                "    print(json.dumps({'errno': exc.errno, 'error': str(exc)}, sort_keys=True))\n"
+                "    allowed = {errno.ENETUNREACH, errno.EHOSTUNREACH, errno.EACCES, errno.EPERM}\n"
+                "    raise SystemExit(0 if exc.errno in allowed else 3)\n"
+                "raise SystemExit(2)\n"
+            )
+            audit.run("docker-egress", "sandbox.container.egress_denied", "Denied outbound socket", [*common, "--entrypoint", "python", image, "-c", egress_probe], stdout_artifact="artifacts/docker-egress-denial.json", runtime={"kind": "real-linux-container", "image_id": image, "network": "none"}, notes=["PASS requires an expected network-policy errno; arbitrary non-zero exits fail."])
             root_common = common.copy()
             root_common[root_common.index("--user") + 1] = "0:0"
-            audit.run("docker-rootfs", "sandbox.container.rootfs_write_denied", "Read-only rootfs denial", [*root_common, "--entrypoint", "python", image, "-c", "from pathlib import Path; Path('/app/forbidden').write_text('x')"], expectation="nonzero", runtime={"kind": "real-linux-container", "image_id": image, "rootfs": "read-only", "user": "root-with-caps-dropped"}, notes=["Root user isolates read-only filesystem enforcement from ordinary directory permissions."])
+            rootfs_probe = (
+                "import errno, json\n"
+                "from pathlib import Path\n"
+                "try:\n"
+                "    Path('/app/forbidden').write_text('x')\n"
+                "except OSError as exc:\n"
+                "    print(json.dumps({'errno': exc.errno, 'error': str(exc)}, sort_keys=True))\n"
+                "    raise SystemExit(0 if exc.errno == errno.EROFS else 3)\n"
+                "raise SystemExit(2)\n"
+            )
+            audit.run("docker-rootfs", "sandbox.container.rootfs_write_denied", "Read-only rootfs denial", [*root_common, "--entrypoint", "python", image, "-c", rootfs_probe], stdout_artifact="artifacts/docker-rootfs-denial.json", runtime={"kind": "real-linux-container", "image_id": image, "rootfs": "read-only", "user": "root-with-caps-dropped"}, notes=["PASS requires EROFS; arbitrary non-zero exits fail. Root isolates filesystem enforcement from ordinary permissions."])
     else:
         for cid in ("sandbox.container.execution", "sandbox.container.tmpfs_write", "sandbox.container.egress_denied", "sandbox.container.rootfs_write_denied"):
             audit.declare(cid, "NOT_EXERCISED", "Run --with-docker or --full.")
