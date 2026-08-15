@@ -80,17 +80,40 @@ jobs:
               >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      - name: Verify local evidence manifest
+        if: always()
+        run: |
+          test -f "$AUDIT_OUTPUT/SHA256SUMS"
+          (
+            cd "$AUDIT_OUTPUT"
+            sha256sum -c SHA256SUMS
+          )
+
       - name: Upload capability evidence packet
+        id: evidence_artifact
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: skill-native-capability-audit-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_attempt }}
           path: ${{ env.AUDIT_OUTPUT }}
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 30
+
+      - name: Publish artifact receipt
+        if: always() && steps.evidence_artifact.outcome == 'success'
+        run: |
+          {
+            printf '\n## Published evidence artifact\n\n'
+            printf -- '- Artifact ID: `%s`\n' '${{ steps.evidence_artifact.outputs.artifact-id }}'
+            printf -- '- Artifact URL: %s\n' '${{ steps.evidence_artifact.outputs.artifact-url }}'
+            printf -- '- Artifact digest: `%s`\n' '${{ steps.evidence_artifact.outputs.artifact-digest }}'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Enforce required capability states
         if: always()
         run: |
           test -f "$AUDIT_OUTPUT/capability-audit-result.json"
           test "${{ steps.audit.outputs.exit_code }}" = "0"
+          test -n "${{ steps.evidence_artifact.outputs.artifact-id }}"
+          test -n "${{ steps.evidence_artifact.outputs.artifact-digest }}"
