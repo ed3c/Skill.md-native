@@ -273,7 +273,10 @@ def make_manifest(origin: str, actions: list[dict]) -> HarnessManifest:
 
 class BrowserHarnessContractTests(unittest.TestCase):
     def test_browser_adapter_requires_browser_domain_contract_and_evidence(self):
-        raw = manifest_payload("http://127.0.0.1:8765", success_actions("http://127.0.0.1:8765"))
+        raw = manifest_payload(
+            "http://127.0.0.1:8765",
+            success_actions("http://127.0.0.1:8765"),
+        )
         missing_contract = deepcopy(raw)
         missing_contract.pop("browser")
         with self.assertRaises(ValidationError):
@@ -299,14 +302,19 @@ class BrowserHarnessContractTests(unittest.TestCase):
         origin = "http://127.0.0.1:8765"
         manifest = make_manifest(origin, success_actions(origin))
         kernel = HarnessKernel()
-        runtime = LocalBrowserFixtureRuntime(Path(tempfile.gettempdir()) / "unused-browser-fixture")
+        runtime = LocalBrowserFixtureRuntime(
+            Path(tempfile.gettempdir()) / "unused-browser-fixture"
+        )
         plan = kernel.compile(
             manifest,
             make_spec("browser-plan"),
             capabilities=runtime.capabilities,
             available_evidence=runtime.evidence_kinds,
         )
-        self.assertEqual(plan.command, ["skill-native-browser-runner", "--config-stdin"])
+        self.assertEqual(
+            plan.command,
+            ["skill-native-browser-runner", "--config-stdin"],
+        )
         self.assertIsNotNone(plan.stdin_digest)
         self.assertNotIn("Eeon", json.dumps(plan.command))
         self.assertNotIn("#name", json.dumps(plan.command))
@@ -314,7 +322,9 @@ class BrowserHarnessContractTests(unittest.TestCase):
     def test_plan_digest_changes_with_browser_driver_actions_and_budgets(self):
         origin = "http://127.0.0.1:8765"
         kernel = HarnessKernel()
-        runtime = LocalBrowserFixtureRuntime(Path(tempfile.gettempdir()) / "unused-browser-fixture")
+        runtime = LocalBrowserFixtureRuntime(
+            Path(tempfile.gettempdir()) / "unused-browser-fixture"
+        )
         spec = make_spec("browser-digest")
         base = manifest_payload(origin, success_actions(origin))
         variants = []
@@ -345,7 +355,9 @@ class BrowserHarnessContractTests(unittest.TestCase):
                 {
                     "driver_version": "1.61.0",
                     "allowed_origins": ["http://127.0.0.1:80"],
-                    "actions": [{"kind": "goto", "url": "http://127.0.0.1/"}],
+                    "actions": [
+                        {"kind": "goto", "url": "http://127.0.0.1/"}
+                    ],
                 }
             )
         with self.assertRaises(ValidationError):
@@ -354,7 +366,9 @@ class BrowserHarnessContractTests(unittest.TestCase):
                     "driver_version": "1.61.0",
                     "allowed_origins": ["http://127.0.0.1"],
                     "artifact_root": "../escape",
-                    "actions": [{"kind": "goto", "url": "http://127.0.0.1/"}],
+                    "actions": [
+                        {"kind": "goto", "url": "http://127.0.0.1/"}
+                    ],
                 }
             )
         with self.assertRaises(ValidationError):
@@ -374,11 +388,17 @@ class BrowserHarnessContractTests(unittest.TestCase):
             )
 
 
-@unittest.skipUnless(PLAYWRIGHT_AVAILABLE, "playwright optional dependency is not installed")
+@unittest.skipUnless(
+    PLAYWRIGHT_AVAILABLE,
+    "playwright optional dependency is not installed",
+)
 class BrowserHarnessIntegrationTests(unittest.TestCase):
     def test_successful_loopback_flow_produces_browser_evidence_and_passing_verdict(self):
         with FixtureServer() as fixture, tempfile.TemporaryDirectory() as temp_dir:
-            manifest = make_manifest(fixture.origin, success_actions(fixture.origin))
+            manifest = make_manifest(
+                fixture.origin,
+                success_actions(fixture.origin),
+            )
             spec = make_spec("browser-success")
             kernel = HarnessKernel()
             runtime = LocalBrowserFixtureRuntime(Path(temp_dir))
@@ -404,22 +424,8 @@ class BrowserHarnessIntegrationTests(unittest.TestCase):
     def test_cross_origin_navigation_is_denied_and_security_gate_fails(self):
         with FixtureServer() as fixture, tempfile.TemporaryDirectory() as temp_dir:
             actions = success_actions(fixture.origin)
-            actions.insert(
-                1,
-                {
-                    "kind": "goto",
-                    "url": fixture.origin.replace("127.0.0.1", "localhost") + "/external",
-                },
-            )
-            manifest_payload_value = manifest_payload(fixture.origin, actions)
-            # The contract itself rejects an explicitly disallowed goto. Exercise runtime
-            # origin denial by permitting both origins and letting the runner observe a
-            # page/network policy violation caused by the fixture link.
-            external_origin = fixture.origin.replace("127.0.0.1", "localhost")
-            manifest_payload_value["browser"]["allowed_origins"] = sorted(
-                [fixture.origin, external_origin]
-            )
-            manifest = HarnessManifest.model_validate(manifest_payload_value)
+            actions.insert(1, {"kind": "click", "selector": "#external"})
+            manifest = make_manifest(fixture.origin, actions)
             spec = make_spec("browser-origin-denied")
             kernel = HarnessKernel()
             runtime = LocalBrowserFixtureRuntime(Path(temp_dir))
@@ -432,6 +438,13 @@ class BrowserHarnessIntegrationTests(unittest.TestCase):
             )
             self.assertEqual(result.verdict.status, VerdictStatus.FAIL)
             self.assertEqual(result.verdict.security_gate, "fail")
+            self.assertTrue(
+                any(
+                    event.get("action") == "Denied"
+                    and str(event.get("url", "")).startswith("http://localhost:")
+                    for event in result.evidence.network
+                )
+            )
             self.assertTrue(
                 any(
                     item.get("rule_id") == "runtime.network.denied"
@@ -461,7 +474,10 @@ class BrowserHarnessIntegrationTests(unittest.TestCase):
 
     def test_modified_artifact_is_rejected_before_verdict(self):
         with FixtureServer() as fixture, tempfile.TemporaryDirectory() as temp_dir:
-            manifest = make_manifest(fixture.origin, success_actions(fixture.origin))
+            manifest = make_manifest(
+                fixture.origin,
+                success_actions(fixture.origin),
+            )
             spec = make_spec("browser-artifact-tamper")
             runtime = LocalBrowserFixtureRuntime(Path(temp_dir))
             kernel = HarnessKernel()
@@ -475,7 +491,11 @@ class BrowserHarnessIntegrationTests(unittest.TestCase):
                 )
                 adapter = kernel.adapters.require(plan.adapter)
                 stdin = adapter.compile_stdin(manifest, spec)
-                execution_id = runtime.execute(sandbox_id, plan.command, stdin=stdin)
+                execution_id = runtime.execute(
+                    sandbox_id,
+                    plan.command,
+                    stdin=stdin,
+                )
                 evidence = runtime.collect(spec.run_id, execution_id)
                 receipt = parse_browser_receipt(evidence.stdout)
                 artifact_root = (
@@ -486,7 +506,9 @@ class BrowserHarnessIntegrationTests(unittest.TestCase):
                 target = artifact_root / receipt.artifacts[0].path
                 target.write_bytes(target.read_bytes() + b"tamper")
                 normalized = adapter.normalize_evidence(manifest, plan, evidence)
-                self.assertFalse(normalized.assertions["browser_artifacts_valid"])
+                self.assertFalse(
+                    normalized.assertions["browser_artifacts_valid"]
+                )
             finally:
                 runtime.destroy(sandbox_id)
 
