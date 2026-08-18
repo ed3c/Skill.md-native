@@ -3,7 +3,8 @@ name = "skill-md-native"
 version = "0.1.0"
 description = "Runtime-verified evidence and ranking layer for Agent Skills"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
   "pydantic>=2.8,<3",
@@ -25,7 +26,7 @@ skill-native-run-artifacts = "skill_native.run_artifacts:main"
 skill-native-attest = "skill_native.attestation_cli:main"
 
 [build-system]
-requires = ["hatchling>=1.25"]
+requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
